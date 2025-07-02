@@ -1,4 +1,6 @@
 ﻿using BencodeNET.Torrents;
+using ShadowPeer.Helpers;
+using Spectre.Console;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -8,6 +10,7 @@ namespace ShadowPeer.DataModels
     {
         private string _name = string.Empty;
         private string _hash = string.Empty;
+        private byte[] _hashBytes = Array.Empty<byte>();
         private string _comment = string.Empty;
         private string _createdBy = string.Empty;
         private string _creationDate = string.Empty;
@@ -117,6 +120,19 @@ namespace ShadowPeer.DataModels
             }
         }
 
+        public required byte[] InfoHashBytes
+        {
+            get => _hashBytes;
+            set
+            {
+                if (value == null || value.Length != 20)
+                {
+                    throw new ArgumentException("InfoHashBytes must be a 20-byte array.");
+                }
+                _hashBytes = value;
+            }
+        }
+
         public required string PassKey
         {
             get => _passKey;
@@ -187,6 +203,7 @@ namespace ShadowPeer.DataModels
                 CreatedBy = torrent.CreatedBy,
                 CreationDate = torrent.CreationDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown",
                 InfoHash = torrent.GetInfoHash(),
+                InfoHashBytes = torrent.GetInfoHashBytes(),
                 PassKey = string.Empty,
                 AnnounceUrls = string.Empty,
                 Trackers = torrent.Trackers ?? new List<IList<string>> { new List<string> { "No trackers available." } }
@@ -195,30 +212,47 @@ namespace ShadowPeer.DataModels
 
         public override string ToString()
         {
-            var sb = new StringBuilder();
+            string urlEncodedHash = DataParser.UrlEncodeInfoHashBytes(InfoHashBytes);
 
-            sb.AppendLine($"Name: {Name}");
-            sb.AppendLine($"Comment: {Comment}");
-            sb.AppendLine($"CreatedBy: {CreatedBy}");
-            sb.AppendLine($"CreationDate: {CreationDate}");
-            sb.AppendLine($"InfoHash: {InfoHash}");
-            sb.AppendLine($"PassKey: {PassKey}");
-            sb.AppendLine($"AnnounceUrls: {AnnounceUrls}");
+            var table = new Table()
+                .AddColumn(new TableColumn("[u]Property[/]").Centered())
+                .AddColumn(new TableColumn("[u]Value[/]"))
+                .Border(TableBorder.Rounded)
+                .BorderColor(Color.Grey);
 
+            table.AddRow("Name", $"[bold green]{Name}[/]");
+            table.AddRow("Comment", string.IsNullOrWhiteSpace(Comment) ? "[grey]No comment provided.[/]" : Comment);
+            table.AddRow("Created By", CreatedBy ?? "[grey]Unknown[/]");
+            table.AddRow("Creation Date", CreationDate);
+            table.AddRow("InfoHash", $"[bold blue]{InfoHash}[/]");
+            table.AddRow("UrlEncoded Infohash", $"[italic]{urlEncodedHash}[/]");
+            table.AddRow("PassKey", string.IsNullOrWhiteSpace(PassKey) ? "[grey]None[/]" : $"[bold yellow]{PassKey}[/]");
 
-            if (Trackers == null || Trackers.Count == 0)
+            if (AnnounceUrls?.Any() == true)
             {
-                sb.AppendLine("Trackers: No trackers");
+                table.AddRow("Announce URLs", string.Join(", ", AnnounceUrls));
+            }
+
+            if (Trackers?.Any() == true)
+            {
+                int groupIndex = 1;
+                foreach (var group in Trackers)
+                {
+                    table.AddRow($"Tracker Group {groupIndex++}", string.Join(", ", group));
+                }
             }
             else
             {
-                var trackersFlat = string.Join(", ", Trackers.SelectMany(list => list));
-                sb.AppendLine($"Trackers: {trackersFlat}");
+                table.AddRow("Trackers", "[grey]No trackers found[/]");
             }
 
-            return sb.ToString();
-        }
+            AnsiConsole.Write(new Panel(table)
+                .Header("[bold underline blue]Loaded torrent info[/]", Justify.Center)
+                .BorderColor(Color.CadetBlue)
+                .Padding(1, 1));
 
+            return "[Torrent metadata table displayed in console]";
+        }
 
     }
 }

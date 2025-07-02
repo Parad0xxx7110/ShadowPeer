@@ -25,7 +25,8 @@ class Program
             AnsiConsole.MarkupLine("[green]Torrent info:[/]");
 
             AnsiConsole.WriteLine(torrent.ToString());
-            Network.SendTCPTest();
+            
+            await Network.SendTCPTest();
 
         }
         catch (Exception ex)
