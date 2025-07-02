@@ -1,0 +1,224 @@
+﻿using BencodeNET.Torrents;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace ShadowPeer.DataModels
+{
+    public class TorrentMdl
+    {
+        private string _name = string.Empty;
+        private string _hash = string.Empty;
+        private string _comment = string.Empty;
+        private string _createdBy = string.Empty;
+        private string _creationDate = string.Empty;
+        private string _passKey = string.Empty;
+        private string _announceUrl = string.Empty;
+
+        private IList<IList<string>> _trackerList = new List<IList<string>>();
+
+        public required string Name
+        {
+            get => _name;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _name = "Unnamed Torrent";
+                }
+                else if (value.Length > 255)
+                {
+                    throw new ArgumentException("Name too long (max 255 chars).");
+                }
+                else
+                {
+                    _name = value.Trim();
+                }
+            }
+        }
+
+        public required string Comment
+        {
+            get => _comment;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _comment = "No comment provided.";
+                }
+                else if (value.Length > 1024)
+                {
+                    throw new ArgumentException("Comment too long (max 1024 chars).");
+                }
+                else
+                {
+                    _comment = value.Trim();
+                }
+            }
+        }
+
+        public required string CreatedBy
+        {
+            get => _createdBy;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _createdBy = "Unknown";
+                }
+                else if (value.Length > 255)
+                {
+                    throw new ArgumentException("CreatedBy too long (max 255 chars).");
+                }
+                else
+                {
+                    _createdBy = value.Trim();
+                }
+            }
+        }
+
+        public required string CreationDate
+        {
+            get => _creationDate;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _creationDate = "Unknown";
+                }
+                else
+                {
+                    // ISO Format validation
+                    if (!Regex.IsMatch(value, @"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$"))
+                    {
+                        throw new ArgumentException("CreationDate must be in 'yyyy-MM-dd' or 'yyyy-MM-dd HH:mm:ss' format.");
+                    }
+                    _creationDate = value;
+                }
+            }
+        }
+
+        public required string InfoHash
+        {
+            get => _hash;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _hash = "Unknown";
+                }
+                else if (value.Length != 40 || !Regex.IsMatch(value, @"\A\b[0-9a-fA-F]+\b\Z"))
+                {
+                    throw new ArgumentException("InfoHash must be a 40-character hexadecimal string.");
+                }
+                else
+                {
+                    _hash = value.ToLowerInvariant();
+                }
+            }
+        }
+
+        public required string PassKey
+        {
+            get => _passKey;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _passKey = "No passkey provided / found.";
+                }
+                else if (value.Length > 255)
+                {
+                    throw new ArgumentException("PassKey too long (max 255 chars).");
+                }
+                else
+                {
+                    _passKey = value.Trim();
+                }
+            }
+        }
+
+        public IList<IList<string>> Trackers
+        {
+            get => _trackerList;
+            set
+            {
+                if (value == null || value.Count == 0)
+                {
+                    _trackerList = new List<IList<string>> { new List<string> { "No trackers available." } };
+                }
+                else
+                {
+                    _trackerList = value;
+                }
+            }
+        }
+
+        public string AnnounceUrls
+        {
+            get => _announceUrl;
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _announceUrl = "No announce URL provided.";
+                }
+                else if (value.Length > 2048)
+                {
+                    throw new ArgumentException("Announce URL too long (max 2048 chars).");
+                }
+                else
+                {
+                    _announceUrl = value.Trim();
+                }
+            }
+        }
+
+
+        // Manual mapping from BencodeNET Torrent obj to TorrentMdl with fallback and validation
+        public static TorrentMdl MapFromBencodeTorrent(Torrent torrent)
+        {
+            if (torrent == null)
+                throw new ArgumentNullException(nameof(torrent), "Torrent object cannot be null.");
+
+            return new TorrentMdl
+            {
+                Name = torrent.DisplayName,
+                Comment = torrent.Comment,
+                CreatedBy = torrent.CreatedBy,
+                CreationDate = torrent.CreationDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown",
+                InfoHash = torrent.GetInfoHash(),
+                PassKey = string.Empty,
+                AnnounceUrls = string.Empty,
+                Trackers = torrent.Trackers ?? new List<IList<string>> { new List<string> { "No trackers available." } }
+            };
+        }
+
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine($"Name: {Name}");
+            sb.AppendLine($"Comment: {Comment}");
+            sb.AppendLine($"CreatedBy: {CreatedBy}");
+            sb.AppendLine($"CreationDate: {CreationDate}");
+            sb.AppendLine($"InfoHash: {InfoHash}");
+            sb.AppendLine($"PassKey: {PassKey}");
+            sb.AppendLine($"AnnounceUrls: {AnnounceUrls}");
+
+
+            if (Trackers == null || Trackers.Count == 0)
+            {
+                sb.AppendLine("Trackers: No trackers");
+            }
+            else
+            {
+                var trackersFlat = string.Join(", ", Trackers.SelectMany(list => list));
+                sb.AppendLine($"Trackers: {trackersFlat}");
+            }
+
+            return sb.ToString();
+        }
+
+
+    }
+}
