@@ -6,7 +6,7 @@ using Spectre.Console;
 
 class Program
 {
-    static async Task Main(string[] args)
+    static async Task Main()
     {
         string path = "C:\\figaro.torrent";
 
@@ -21,11 +21,11 @@ class Program
                 return;
             }
 
-        
+
             AnsiConsole.MarkupLine("[green]Torrent info:[/]");
 
-            AnsiConsole.WriteLine(torrent.ToString());
-            
+            AnsiConsole.WriteLine(torrent.ShowTorrentMeta());
+
             await Network.SendTCPTest();
 
         }

@@ -1,23 +1,45 @@
-﻿using System.Net;
+﻿using ShadowPeer.DataModels;
+using ShadowPeer.Helpers;
+using System.Collections.Specialized;
+using System.Net;
 using System.Net.Sockets;
-using System.Text;
+using System.Web;
 
+/// <summary>
+/// Fluent API for building BitTorrent tracker announces.
+/// Supports automatic passkey placement and advanced parameter composition.
+/// </summary>
 public class AnnounceBuilder
 {
-    private string? _trackerUrl;
+    private const int DefaultPort = 25341;
+    private const int DefaultNumWant = 30;
+
     private byte[]? _infoHash;
-    private byte[]? _peerId;
-    private int? _port;
-    private long _uploaded = 0, _downloaded = 0, _left = 0;
-    private string? _ip, _ipv6, _event, _trackerId, _key, _passkey;
-    private string? _extra;
+    private int? _port = DefaultPort;
+    private long _uploaded, _downloaded, _left;
+    private string? _trackerUrl, _event, _key, _trackerId, _ipv6, _peerId, _passkey, _ip, _extra;
+
+    /// <summary>
+    /// Initializes the builder from a TorrentMdl.
+    /// </summary>
+    public AnnounceBuilder(Torrents torrent)
+    {
+        ArgumentNullException.ThrowIfNull(torrent);
+
+        _trackerUrl = torrent.AnnounceUrls?.Trim();
+        _infoHash = torrent.InfoHashBytes;
+        _peerId = GeneratePeerId();
+
+        if (!string.IsNullOrWhiteSpace(torrent.PassKey) &&
+            !torrent.PassKey.Equals("No passkey provided / found.", StringComparison.OrdinalIgnoreCase))
+        {
+            _passkey = torrent.PassKey.Trim();
+        }
+    }
 
     public AnnounceBuilder WithTrackerUrl(string url)
     {
-        if (string.IsNullOrWhiteSpace(url))
-            throw new ArgumentException("Tracker URL cannot be null or empty.", nameof(url));
-
-        _trackerUrl = url.Trim();
+        _trackerUrl = string.IsNullOrWhiteSpace(url) ? throw new ArgumentException("Announce URL cannot be null or empty.", nameof(url)) : url.Trim();
         return this;
     }
 
@@ -30,19 +52,20 @@ public class AnnounceBuilder
         return this;
     }
 
-    public AnnounceBuilder WithPeerId(ReadOnlySpan<byte> peerId)
+    public AnnounceBuilder WithPeerId(string peerId)
     {
         if (peerId.Length != 20)
             throw new ArgumentException("Peer ID must be 20 bytes.");
 
-        _peerId = peerId.ToArray();
+        _peerId = peerId;
         return this;
     }
 
     public AnnounceBuilder WithPort(int port)
     {
-        if (port < 1 || port > 65535)
+        if (port is < 1 or > 65535)
             throw new ArgumentOutOfRangeException(nameof(port), "Port must be between 1 and 65535.");
+
         _port = port;
         return this;
     }
@@ -64,12 +87,13 @@ public class AnnounceBuilder
             _ip = ip;
         else if (ipAddr.AddressFamily == AddressFamily.InterNetworkV6)
             _ipv6 = ip;
+
         return this;
     }
 
-    public AnnounceBuilder WithEvent(string evt)
+    public AnnounceBuilder WithEvent(string torrentEvent)
     {
-        _event = evt;
+        _event = torrentEvent;
         return this;
     }
 
@@ -87,93 +111,110 @@ public class AnnounceBuilder
 
     public AnnounceBuilder WithPasskey(string passkey)
     {
-        if (!string.IsNullOrWhiteSpace(passkey))
-            _passkey = passkey;
+        _passkey = string.IsNullOrWhiteSpace(passkey) ? null : passkey.Trim();
         return this;
     }
 
-    public AnnounceBuilder WithExtraQuery(string queryString)
+    public AnnounceBuilder WithExtraQuery(string extraQueryString)
     {
-        _extra = queryString;
+        _extra = string.IsNullOrWhiteSpace(extraQueryString) ? null : extraQueryString.Trim('&', '?');
         return this;
     }
 
+    /// <summary>
+    /// Builds the final announce URL with all required and optional parameters.
+    /// Automatically decides whether to include the passkey in the path or as a query parameter.
+    /// </summary>
+    /// <returns>Fully formed announce URL ready for HTTP GET</returns>
+    /// <exception cref="InvalidOperationException">Thrown if required fields are missing or invalid</exception>
     public string Build()
     {
-        if (_trackerUrl == null || _infoHash == null || _infoHash.Length == 0 || _peerId == null || _peerId.Length == 0 || !_port.HasValue)
-            throw new InvalidOperationException("Tracker URL, InfoHash, PeerId, and Port are required.");
+        ValidateRequiredFields();
 
-        var uri = new Uri(_trackerUrl);
-        var segments = uri.Segments.Select(s => s.Trim('/')).Where(s => s.Length > 0).ToList();
+        var uriBuilder = new UriBuilder(_trackerUrl!);
+        var query = BuildQueryParameters();
 
+        // Automatically decide how to inject the passkey (path or query)
         if (!string.IsNullOrWhiteSpace(_passkey))
         {
-            int idx = segments.FindIndex(s => s.Equals("announce", StringComparison.OrdinalIgnoreCase));
-            if (idx >= 0)
-                segments.Insert(idx, _passkey!);
+            if (uriBuilder.Path.Contains("announce", StringComparison.OrdinalIgnoreCase) &&
+                !uriBuilder.Path.Contains(_passkey))
+            {
+                uriBuilder.Path = InsertPasskeyIntoPath(uriBuilder.Path, _passkey);
+            }
             else
-                segments.Add(_passkey!);
+            {
+                query["passkey"] = _passkey;
+            }
         }
 
-        var baseUrl = $"{uri.Scheme}://{uri.Host}{(uri.IsDefaultPort ? "" : $":{uri.Port}")}/{string.Join('/', segments)}";
-
-        var sb = new StringBuilder(512);
-
-        void Add(string key, string? value)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-                sb.Append('&').Append(key).Append('=').Append(WebUtility.UrlEncode(value));
-        }
-
-        sb.Append("?info_hash=").Append(PercentEncode(_infoHash));
-        sb.Append("&peer_id=").Append(PercentEncode(_peerId));
-        sb.Append("&port=").Append(_port.Value);
-        sb.Append("&uploaded=").Append(_uploaded);
-        sb.Append("&downloaded=").Append(_downloaded);
-        sb.Append("&left=").Append(_left);
-        sb.Append("&compact=1&numwant=80");
-
-        Add("ip", _ip);
-        Add("ipv6", _ipv6);
-        Add("event", _event);
-        Add("trackerid", _trackerId);
-        Add("key", _key);
-
+        // Merge additional custom parameters
         if (!string.IsNullOrWhiteSpace(_extra))
-            sb.Append('&').Append(_extra);
+        {
+            var extraParsed = HttpUtility.ParseQueryString(_extra);
+            foreach (string? key in extraParsed)
+            {
+                if (!string.IsNullOrWhiteSpace(key))
+                    query[key] = extraParsed[key];
+            }
+        }
 
-        return baseUrl + sb.ToString();
+        uriBuilder.Query = query.ToString();
+        return uriBuilder.ToString();
     }
 
-    // Construire la requête HTTP GET complète au format texte pour TCP
-    public string BuildTcpRequest()
+    private void ValidateRequiredFields()
     {
-        if (_trackerUrl == null)
-            throw new InvalidOperationException("Tracker URL must be set.");
-
-        var fullUrl = Build();
-        var uri = new Uri(fullUrl);
-
-        var sb = new StringBuilder();
-
-        sb.Append($"GET {uri.PathAndQuery} HTTP/1.0\r\n");
-        sb.Append($"Host: {uri.Host}\r\n");
-        sb.Append("User-Agent: ShadowPeer/1.0\r\n");
-        sb.Append("Connection: close\r\n");
-        sb.Append("\r\n");
-
-        return sb.ToString();
+        if (string.IsNullOrWhiteSpace(_trackerUrl))
+            throw new InvalidOperationException("Tracker URL is required.");
+        if (_infoHash == null || _infoHash.Length != 20)
+            throw new InvalidOperationException("Info hash must be 20 bytes.");
+        if (string.IsNullOrWhiteSpace(_peerId) || _peerId.Length != 20)
+            throw new InvalidOperationException("Peer ID must be 20 bytes.");
     }
 
-    private static string PercentEncode(ReadOnlySpan<byte> data)
+    private static string InsertPasskeyIntoPath(string path, string passkey)
     {
-        var sb = new StringBuilder(data.Length * 3);
-        foreach (byte b in data)
-            sb.Append('%').Append(b.ToString("X2"));
-        return sb.ToString();
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList();
+        int announceIndex = segments.FindIndex(s => s.Equals("announce", StringComparison.OrdinalIgnoreCase));
+        if (announceIndex >= 0)
+            segments.Insert(announceIndex, passkey);
+        else
+            segments.Add(passkey);
+
+        return "/" + string.Join('/', segments);
     }
 
-    public const string EventStarted = "started";
-    public const string EventStopped = "stopped";
-    public const string EventCompleted = "completed";
+    private NameValueCollection BuildQueryParameters()
+    {
+        var query = HttpUtility.ParseQueryString(string.Empty);
+
+        query["info_hash"] = DataParser.UrlEncodeInfoHashBytes(_infoHash);
+        query["peer_id"] = _peerId;
+        query["port"] = _port?.ToString() ?? DefaultPort.ToString();
+        query["uploaded"] = _uploaded.ToString();
+        query["downloaded"] = _downloaded.ToString();
+        query["left"] = _left.ToString();
+
+        if (!string.IsNullOrWhiteSpace(_event)) query["event"] = _event;
+        if (!string.IsNullOrWhiteSpace(_key)) query["key"] = _key;
+        if (!string.IsNullOrWhiteSpace(_trackerId)) query["trackerid"] = _trackerId;
+        if (!string.IsNullOrWhiteSpace(_ip)) query["ip"] = _ip;
+        if (!string.IsNullOrWhiteSpace(_ipv6)) query["ipv6"] = _ipv6;
+
+        query["compact"] = "1";
+        query["numwant"] = DefaultNumWant.ToString();
+        query["supportcrypto"] = "1";
+        query["no_peer_id"] = "1";
+
+        return query;
+    }
+
+    /// <summary>
+    /// Generates a default peer ID if none was set. Format: -SP0001-XXXXXXXXXXXX
+    /// </summary>
+    private static string GeneratePeerId()
+    {
+        return "-SP0001-" + Guid.NewGuid().ToString("N")[..12];
+    }
 }

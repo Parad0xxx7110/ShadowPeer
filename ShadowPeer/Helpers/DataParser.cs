@@ -1,36 +1,36 @@
 ﻿using BencodeNET.Objects;
 using BencodeNET.Parsing;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using ShadowPeer.DataModels;
 using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ShadowPeer.Helpers
 {
     internal class DataParser
     {
-        private const int PeerCompactSize = 6; // Each peers is 6 bytes.  4 IP + 2 port
+        private const int PeerCompactSize = 6; // Compact peer format: 4 bytes IP + 2 bytes port (big endian)
 
-
-
-        public static void ProcessResponse(byte[] responseBytes)
+        /// <summary>
+        /// Parses the raw HTTP response (headers + Bencode body) received from the tracker.
+        /// </summary>
+        /// <param name="responseBytes">Raw response bytes (HTTP headers + Bencode body)</param>
+        /// <param name="responseModel">Output: DTO model containing extracted data</param>
+        /// <returns>True if parsing succeeded, false otherwise</returns>
+        public static bool TryParseTrackerResponse(byte[] responseBytes, out TrackerResponse responseModel)
         {
+            responseModel = new TrackerResponse();
+
+            // Find the end of the HTTP header section
             int headerEndIndex = IndexOfSequence(responseBytes, "\r\n\r\n"u8.ToArray());
             if (headerEndIndex == -1)
             {
-                Console.WriteLine("Invalid HTTP response, no header-body separator found.");
-                return;
+                // Invalid response format, no header-body separator found
+                return false;
             }
 
-            string headers = Encoding.ASCII.GetString(responseBytes, 0, headerEndIndex);
-            Console.WriteLine("Response headers:");
-            Console.WriteLine(headers);
-
+            // Extract Bencode body from the response
             int bodyStartIndex = headerEndIndex + 4;
             byte[] bodyBytes = new byte[responseBytes.Length - bodyStartIndex];
-
             Array.Copy(responseBytes, bodyStartIndex, bodyBytes, 0, bodyBytes.Length);
 
             try
@@ -38,47 +38,57 @@ namespace ShadowPeer.Helpers
                 var parser = new BencodeParser();
                 var dict = parser.Parse<BDictionary>(bodyBytes);
 
-                Console.WriteLine("\nTracker response:");
-                PrintIfNumber(dict, "complete", "Seeders");
-                PrintIfNumber(dict, "incomplete", "Leechers");
-                PrintIfNumber(dict, "interval", "Interval");
-                PrintIfNumber(dict, "min interval", "Min Interval");
+                // Extract common fields
+                responseModel.Seeders = GetIntIfExists(dict, "complete");
+                responseModel.Leechers = GetIntIfExists(dict, "incomplete");
+                responseModel.Interval = GetIntIfExists(dict, "interval");
+                responseModel.MinInterval = GetIntIfExists(dict, "min interval");
 
+                // Extract peers list
                 if (!dict.TryGetValue("peers", out var peersObj))
+                    return true; // Parsing successful even if no peers present
+
+                if (peersObj is BString peersBStr)
                 {
-                    Console.WriteLine("No peers in response.");
-                    return;
+                    // Compact peer format
+                    responseModel.PeersCompact = peersBStr.Value.ToArray();
+                }
+                else if (peersObj is BList peersList)
+                {
+                    // Legacy format: list of dictionaries for each peer
+                    var parsedPeers = new List<Peer>();
+                    foreach (var peerItem in peersList)
+                    {
+                        if (peerItem is BDictionary peerDict)
+                        {
+                            var ip = peerDict.Get<BString>("ip")?.Value.ToString();
+                            var port = peerDict.Get<BNumber>("port")?.Value;
+
+                            if (!string.IsNullOrEmpty(ip) && port.HasValue)
+                            {
+                                parsedPeers.Add(new Peer { IP = ip, Port = (ushort)port.Value });
+                            }
+                        }
+                    }
+                    responseModel.PeersList = parsedPeers;
+                }
+                else
+                {
+                    // Unexpected peers format - ignore or handle if needed
                 }
 
-                switch (peersObj)
-                {
-                    case BString peersBStr:
-                        ParseCompactPeers(peersBStr);
-                        break;
-                    case BList peersList:
-                        ParsePeerList(peersList);
-                        break;
-                    default:
-                        Console.WriteLine("Unknown peers format.");
-                        break;
-                }
+                return true;
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"Failed to parse response: {ex.Message}");
-                Console.WriteLine($"Raw response: {Encoding.ASCII.GetString(bodyBytes)}");
+                // Parsing failure due to invalid Bencode or other errors
+                return false;
             }
-            return;
         }
 
-        private static void PrintIfNumber(BDictionary dict, string key, string displayName)
-        {
-            if (dict.TryGetValue(key, out var obj) && obj is BNumber num)
-                Console.WriteLine($"{displayName}: {num.Value}");
-        }
-
-
-        // Clean cut between header and body
+        /// <summary>
+        /// Finds the first occurrence of a byte pattern within a byte array.
+        /// </summary>
         private static int IndexOfSequence(byte[] buffer, byte[] pattern)
         {
             for (int i = 0; i <= buffer.Length - pattern.Length; i++)
@@ -98,106 +108,70 @@ namespace ShadowPeer.Helpers
             return -1;
         }
 
-        private static void ParseCompactPeers(BString peersBStr)
+        /// <summary>
+        /// Tries to extract an integer value from a BDictionary by key.
+        /// </summary>
+        private static int? GetIntIfExists(BDictionary dict, string key)
         {
-            // Convert the BString's underlying value to a byte array
-            byte[] peersBytes = peersBStr.Value.ToArray();
-
-            // Check if the total length of the bytes is a multiple of the expected peer size
-            if (peersBytes.Length % PeerCompactSize != 0)
+            if (dict.TryGetValue(key, out var val) && val is BNumber num)
             {
-                Console.WriteLine($"Warning: Peers data length {peersBytes.Length} mismatch not a multiple of {PeerCompactSize}");
+                return (int)num.Value;
             }
+            return null;
+        }
 
-            // Calculate how many peers are contained in the byte array
-            int peerCount = peersBytes.Length / PeerCompactSize;
+        /// <summary>
+        /// Utility method to parse and decode compact peer list format.
+        /// </summary>
+        public static IEnumerable<Peer> ParseCompactPeers(byte[] peersCompact)
+        {
+            var peers = new List<Peer>();
 
-            // Warn if no peers are found in the data blob
-            if (peerCount == 0)
-            {
-                Console.WriteLine("Warning -> No peers found in blob!.");
-            }
+            if (peersCompact.Length % PeerCompactSize != 0)
+                throw new ArgumentException("Compact peers data length mismatch !");
 
-            Console.WriteLine($"\nFound {peerCount} peers (compact format):");
+            int peerCount = peersCompact.Length / PeerCompactSize;
 
-            // Loop through each peer entry
             for (int i = 0; i < peerCount; i++)
             {
-                // Calculate the starting index of the current peer data in the array
                 int offset = i * PeerCompactSize;
 
-                // Extract the 4 bytes corresponding to the IPv4 address, then convert to a human-readable string
-                string ip = new IPAddress(peersBytes.AsSpan(offset, 4)).ToString();
+                // IP address (4 bytes)
+                string ip = new IPAddress(peersCompact.AsSpan(offset, 4)).ToString();
 
-                // Extract the 2 bytes corresponding to the port number
-                // Shift the first byte by 8 bits to the left (high byte) and OR it with the second byte (low byte) to form the port number
-                ushort port = (ushort)(peersBytes[offset + 4] << 8 | peersBytes[offset + 5]);
+                // Port number (2 bytes, big endian)
+                ushort port = (ushort)((peersCompact[offset + 4] << 8) | peersCompact[offset + 5]);
 
-                // Convert the port to string for consistent formatting
-                string portStr = port.ToString();
-
-                // Output the peer info as IP:port
-                Console.WriteLine($"  Peer {i + 1}: {ip}:{portStr}");
+                peers.Add(new Peer { IP = ip, Port = port });
             }
+
+            return peers;
         }
 
-
-        // Parser for peer list in BList format(non-compact dictionnary)
-        private static void ParsePeerList(BList peersList)
-        {
-            if (peersList.Count == 0)
-            {
-                Console.WriteLine("Warning -> No peers found in list format.");
-                
-            }
-
-            Console.WriteLine($"\nFound {peersList.Count} peers (list format):");
-
-            for (int i = 0; i < peersList.Count; i++)
-            {
-                
-                if (peersList[i] is not BDictionary peerDict)
-                {
-                    Console.WriteLine($"  Peer {i + 1}: Invalid format");
-                    continue;
-                }
-
-                string? ip = peerDict.Get<BString>("ip")?.Value.ToString();
-                long? port = peerDict.Get<BNumber>("port")?.Value;
-
-                if (ip != null && port.HasValue)
-                    Console.WriteLine($"  Peer {i + 1}: {ip}:{port}");
-                else
-                    Console.WriteLine($"  Peer {i + 1}: Incomplete data");
-            }
-
-
-        }
-
+        /// <summary>
+        /// Encodes a byte array representing an info_hash into a URL-encoded string.
+        /// </summary>
         public static string UrlEncodeInfoHashBytes(byte[] bytes)
         {
-            var sb = new StringBuilder(bytes.Length * 3); // worst case: all bytes encoded
-      
+            var sb = new StringBuilder(bytes.Length * 3); // Worst case all bytes encoded as %XX
+
             foreach (var b in bytes)
             {
                 char c = (char)b;
                 if ((c >= 'a' && c <= 'z') ||
                     (c >= 'A' && c <= 'Z') ||
                     (c >= '0' && c <= '9') ||
-                    c == '.' || c == '-' || c == '_' || c == '~') // URI safe chars
+                    c == '.' || c == '-' || c == '_' || c == '~') // Unreserved URI characters
                 {
                     sb.Append(c);
                 }
                 else
                 {
                     sb.Append('%');
-                    sb.Append(b.ToString("x2")); // lower case hex
+                    sb.Append(b.ToString("x2")); // Lowercase hex encoding 
                 }
             }
             return sb.ToString();
         }
-
-
-
     }
 }

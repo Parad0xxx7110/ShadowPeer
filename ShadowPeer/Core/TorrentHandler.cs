@@ -9,7 +9,7 @@ namespace ShadowPeer.Core
     internal class TorrentHandler
     {
         public string TorrentFilePath { get; }
-        public TorrentMdl Torrent { get; private set; }
+        public Torrents Torrent { get; private set; }
 
         public TorrentHandler(string torrentFilePath)
         {
@@ -17,7 +17,7 @@ namespace ShadowPeer.Core
             Torrent = null!; 
         }
 
-        public async Task<TorrentMdl?> LoadTorrentAsync()
+        public async Task<Torrents> LoadTorrentAsync()
         {
             try
             {
@@ -36,9 +36,9 @@ namespace ShadowPeer.Core
                 }
 
                 var parser = new BencodeParser();
-                var torrent = await parser.ParseAsync<Torrent>(fs);
+                var torrent = await parser.ParseAsync<BencodeNET.Torrents.Torrent>(fs);
 
-                var torrentMdl = TorrentMdl.MapFromBencodeTorrent(torrent);
+                var torrentMdl = Torrents.MapFromBencodeTorrent(torrent);
                 torrentMdl.AnnounceUrls = GetPrimaryAnnounceUrl(torrentMdl);
 
                 if (!string.IsNullOrEmpty(torrentMdl.AnnounceUrls))
@@ -56,7 +56,7 @@ namespace ShadowPeer.Core
             }
         }
 
-        private static string? GetPrimaryAnnounceUrl(TorrentMdl torrent)
+        private static string? GetPrimaryAnnounceUrl(Torrents torrent)
         {
             if (torrent.Trackers == null || torrent.Trackers.Count == 0)
             {

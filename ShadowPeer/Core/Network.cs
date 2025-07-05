@@ -1,105 +1,108 @@
-﻿using BencodeNET.Objects;
-using BencodeNET.Parsing;
-using System.Net;
+﻿using ShadowPeer.Helpers;
 using System.Net.Sockets;
 using System.Text;
 using System.Web;
-using ShadowPeer.Helpers;
-using System.Threading.Tasks;
 
 namespace ShadowPeer.Core
+{
+    internal static class Network
     {
-        internal static class Network
+        private const int BufferSize = 8192;
+        private const int ResponseTimeoutMs = 10000;
+
+        public static async Task SendTCPTest()
         {
-            private const int BufferSize = 8192; // Should be fairly enough for most responses
-            private const int ResponseTimeoutMs = 10000; // 10 seconds timeout for tracker response
-            
+            string host = "tracker.p2p-world.net";
+            int trackerPort = 8080;
 
-            public static async Task SendTCPTest()
+
+            string infoHashEncoded = "%de%bf%9b%06%1c%e6%d3%f1CAR%e9%b2%0b%81%87%feVz%b4";
+            string peerId = "-DE1200-hQj0UCmYXZ7w";
+            int peerPort = 25341;
+
+            string RequestBody = $"/QIwOGEPByBzj5jr2OWcLgWP5GIULCtjA/announce?" +
+                                 $"info_hash={infoHashEncoded}" +
+                                 $"&peer_id={HttpUtility.UrlEncode(peerId)}" +
+                                 $"&port={peerPort}" +
+                                 $"&uploaded=0&downloaded=0&left=0" +
+                                 $"&event=started" +
+                                 $"&key=gcBz7G0t" +
+                                 $"&compact=1" +
+                                 $"&numwant=100" +
+                                 $"&supportcrypto=1&no_peer_id=1";
+
+
+            string FinalRequest = $"GET {RequestBody} HTTP/1.1\r\n" +
+                             $"Host: {host}\r\n" +
+                             "Connection: close\r\n" +
+                             "User-Agent: ShadowPeerClient/1.0\r\n" +
+                             "\r\n";
+
+            try
             {
-                string host = "tracker.p2p-world.net";
-                int trackerPort = 8080;
+                using var client = new TcpClient();
+                await client.ConnectAsync(host, trackerPort);
 
-            
-                string infoHashEncoded = "%de%bf%9b%06%1c%e6%d3%f1CAR%e9%b2%0b%81%87%feVz%b4"; // Url-encoded info_hash
+                var stream = client.GetStream();
+                var requestBytes = Encoding.ASCII.GetBytes(FinalRequest);
+                await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
-                string peerId = "-DE1200-hQj0UCmYXZ7w"; // 20 bytes
-                int peerPort = 25341;
+                var buffer = new byte[BufferSize];
+                int bytesRead;
 
-                // Requête originale avec votre encodage d'info_hash
-                string requestPath = $"/QIwOGEPByBzj5jr2OWcLgWP5GIULCtjA/announce?" +
-                                   $"info_hash={infoHashEncoded}" +
-                                   $"&peer_id={HttpUtility.UrlEncode(peerId)}" +
-                                   $"&port={peerPort}" +
-                                   $"&uploaded=0&downloaded=0&left=0" +
-                                   $"&event=started" +
-                                   $"&key=gcBz7G0t" +
-                                   $"&compact=1" +
-                                   $"&numwant=100" +
-                                   $"&supportcrypto=1&no_peer_id=1";
-
-                try
+                using var ms = new MemoryStream();
+                
+                do
                 {
-                    using var client = new TcpClient();
-
-                    client.SendTimeout = ResponseTimeoutMs;
-                    client.ReceiveTimeout = ResponseTimeoutMs;
-
-                    var connectTask = client.ConnectAsync(host, trackerPort);
-                    if (!connectTask.Wait(ResponseTimeoutMs))
+                    bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                    if (bytesRead > 0)
                     {
-                        Console.WriteLine("Connection timeout."); // Retry ???
-                        return;
+                        await ms.WriteAsync(buffer, 0, bytesRead);
                     }
+                } while (bytesRead > 0);
 
-                    if (!client.Connected)
+                var responseBytes = ms.ToArray();
+
+
+
+                if (DataParser.TryParseTrackerResponse(responseBytes, out var trackerResponse))
+                {
+                    Console.WriteLine($"Seeders: {trackerResponse.Seeders}");
+                    Console.WriteLine($"Leechers: {trackerResponse.Leechers}");
+                    Console.WriteLine($"Interval: {trackerResponse.Interval}");
+                    Console.WriteLine($"MinInterval: {trackerResponse.MinInterval}");
+
+                    if (trackerResponse.IsCompact && trackerResponse.PeersCompact != null)
                     {
-                        Console.WriteLine("Failed to connect to the tracker.");
-                        return;
-                    }
-
-                    Console.WriteLine("Connected to the tracker.");
-
-                    using NetworkStream stream = client.GetStream();
-
-                    string request =
-                        $"GET {requestPath} HTTP/1.1\r\n" +
-                        $"Host: {host}\r\n" +
-                        $"User-Agent: Shad0wPeer/1.0\r\n" +
-                        $"Connection: close\r\n" +
-                        $"\r\n";
-
-                    byte[] requestBytes = Encoding.ASCII.GetBytes(request);
-                    await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
-
-                    byte[] buffer = new byte[BufferSize];
-                    using var responseBuilder = new MemoryStream();
-
-                    var readTask = Task.Run(async () =>
-                    {
-                        int bytesRead;
-                        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                        Console.WriteLine("Peers (compact format):");
+                        var peers = DataParser.ParseCompactPeers(trackerResponse.PeersCompact);
+                        foreach (var peer in peers)
                         {
-                           await responseBuilder.WriteAsync(buffer, 0, bytesRead);
+                            Console.WriteLine($" - {peer.IP}:{peer.Port}");
                         }
-                    });
-
-                    if (!readTask.Wait(ResponseTimeoutMs))
-                    {
-                        Console.WriteLine("Response timeout.");
-                        return;
                     }
-
-                    DataParser.ProcessResponse(responseBuilder.ToArray());
+                    else if (trackerResponse.PeersList != null)
+                    {
+                        Console.WriteLine("Peers (list format):");
+                        foreach (var peer in trackerResponse.PeersList)
+                        {
+                            Console.WriteLine($" - {peer.IP}:{peer.Port}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("No peers found in response.");
+                    }
                 }
-                catch (SocketException ex)
+                else
                 {
-                    Console.WriteLine($"Network error: {ex.SocketErrorCode} - {ex.Message}");
+                    Console.WriteLine("Failed to parse tracker response.");
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during TCP communication: {ex.Message}");
             }
         }
     }
+}

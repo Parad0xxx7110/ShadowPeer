@@ -1,7 +1,6 @@
-﻿using System.Net;
+﻿using Spectre.Console;
+using System.Net;
 using System.Web;
-using Spectre;
-using Spectre.Console;
 
 namespace ShadowPeer.Helpers
 {
@@ -113,10 +112,15 @@ namespace ShadowPeer.Helpers
         private static List<IPEndPoint> ParseCompactPeersList(ReadOnlySpan<byte> data)
         {
             var list = new List<IPEndPoint>();
+
+            // One ip address is 4 bytes, port is 2 bytes (big-endian) = 6 bytes total
             for (int i = 0; i + 6 <= data.Length; i += 6)
             {
-                var ip = new IPAddress(new byte[] { data[i], data[i + 1], data[i + 2], data[i + 3] });
+                // Extract IP address (4 bytes)
+                var ip = new IPAddress([data[i], data[i + 1], data[i + 2], data[i + 3]]);
+                // Extract port (2 bytes, big-endian)
                 var port = data[i + 4] << 8 | data[i + 5];
+
                 list.Add(new IPEndPoint(ip, port));
             }
             return list;

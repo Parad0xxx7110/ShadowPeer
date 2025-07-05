@@ -6,18 +6,18 @@ using System.Text.RegularExpressions;
 
 namespace ShadowPeer.DataModels
 {
-    public class TorrentMdl
+    public class Torrents
     {
         private string _name = string.Empty;
         private string _hash = string.Empty;
-        private byte[] _hashBytes = Array.Empty<byte>();
+        private byte[] _hashBytes = [];
         private string _comment = string.Empty;
         private string _createdBy = string.Empty;
         private string _creationDate = string.Empty;
         private string _passKey = string.Empty;
         private string _announceUrl = string.Empty;
 
-        private IList<IList<string>> _trackerList = new List<IList<string>>();
+        private IList<IList<string>> _trackerList = [];
 
         public required string Name
         {
@@ -190,13 +190,13 @@ namespace ShadowPeer.DataModels
         }
 
 
-        // Manual mapping from BencodeNET Torrent obj to TorrentMdl with fallback and validation
-        public static TorrentMdl MapFromBencodeTorrent(Torrent torrent)
+        // Manual mapping from BencodeNET Torrent obj to a custom data model Torrents with fallback and validation
+        public static Torrents MapFromBencodeTorrent(Torrent torrent)
         {
             if (torrent == null)
                 throw new ArgumentNullException(nameof(torrent), "Torrent object cannot be null.");
 
-            return new TorrentMdl
+            return new Torrents
             {
                 Name = torrent.DisplayName,
                 Comment = torrent.Comment,
@@ -206,11 +206,11 @@ namespace ShadowPeer.DataModels
                 InfoHashBytes = torrent.GetInfoHashBytes(),
                 PassKey = string.Empty,
                 AnnounceUrls = string.Empty,
-                Trackers = torrent.Trackers ?? new List<IList<string>> { new List<string> { "No trackers available." } }
+                Trackers = torrent.Trackers ?? [["No trackers available."]]
             };
         }
 
-        public override string ToString()
+        public string ShowTorrentMeta()
         {
             string urlEncodedHash = DataParser.UrlEncodeInfoHashBytes(InfoHashBytes);
 
