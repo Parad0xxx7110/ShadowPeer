@@ -6,18 +6,20 @@ using System.Text.RegularExpressions;
 
 namespace ShadowPeer.DataModels
 {
-    public class Torrents
+    public class TorrentMetadatas
     {
         private string _name = string.Empty;
         private string _hash = string.Empty;
-        private byte[] _hashBytes = [];
+        private byte[] _hashBytes = Array.Empty<byte>();
         private string _comment = string.Empty;
         private string _createdBy = string.Empty;
         private string _creationDate = string.Empty;
         private string _passKey = string.Empty;
         private string _announceUrl = string.Empty;
+        private string _host = string.Empty;
+        private string _port = string.Empty;
 
-        private IList<IList<string>> _trackerList = [];
+        private IList<IList<string>> _trackerList = new List<IList<string>>();
 
         public required string Name
         {
@@ -90,7 +92,7 @@ namespace ShadowPeer.DataModels
                 }
                 else
                 {
-                    // ISO Format validation
+                    // ISO Format validation (yyyy-MM-dd ou yyyy-MM-dd HH:mm:ss)
                     if (!Regex.IsMatch(value, @"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$"))
                     {
                         throw new ArgumentException("CreationDate must be in 'yyyy-MM-dd' or 'yyyy-MM-dd HH:mm:ss' format.");
@@ -153,7 +155,7 @@ namespace ShadowPeer.DataModels
             }
         }
 
-        public IList<IList<string>> Trackers
+        public required IList<IList<string>> Trackers
         {
             get => _trackerList;
             set
@@ -169,7 +171,7 @@ namespace ShadowPeer.DataModels
             }
         }
 
-        public string AnnounceUrls
+        public required string AnnounceUrls
         {
             get => _announceUrl;
             set
@@ -177,26 +179,38 @@ namespace ShadowPeer.DataModels
                 if (string.IsNullOrWhiteSpace(value))
                 {
                     _announceUrl = "No announce URL provided.";
-                }
-                else if (value.Length > 2048)
-                {
-                    throw new ArgumentException("Announce URL too long (max 2048 chars).");
+                    _host = "Unknown";
+                    _port = "Unknown";
                 }
                 else
                 {
                     _announceUrl = value.Trim();
+
+                    try
+                    {
+                        var uri = new Uri(_announceUrl);
+                        _host = uri.Host;
+                        _port = uri.Port.ToString();
+                    }
+                    catch
+                    {
+                        _host = "Invalid URL";
+                        _port = "Invalid URL";
+                    }
                 }
             }
         }
 
+        public string Host => _host;
+        public string Port => _port;
 
-        // Manual mapping from BencodeNET Torrent obj to a custom data model Torrents with fallback and validation
-        public static Torrents MapFromBencodeTorrent(Torrent torrent)
+        // Manual mapping from BencodeNET Torrent obj to this model with fallback and validation
+        public static TorrentMetadatas MapFromBencodeTorrent(Torrent torrent)
         {
             if (torrent == null)
                 throw new ArgumentNullException(nameof(torrent), "Torrent object cannot be null.");
 
-            return new Torrents
+            return new TorrentMetadatas
             {
                 Name = torrent.DisplayName,
                 Comment = torrent.Comment,
@@ -206,11 +220,12 @@ namespace ShadowPeer.DataModels
                 InfoHashBytes = torrent.GetInfoHashBytes(),
                 PassKey = string.Empty,
                 AnnounceUrls = string.Empty,
-                Trackers = torrent.Trackers ?? [["No trackers available."]]
+                Trackers = torrent.Trackers ?? new List<IList<string>> { new List<string> { "No trackers available." } },
             };
         }
 
-        public string ShowTorrentMeta()
+        // Shouldn't be here but i'm lazy AF.
+        public void ShowTorrentMeta()
         {
             string urlEncodedHash = DataParser.UrlEncodeInfoHashBytes(InfoHashBytes);
 
@@ -227,10 +242,12 @@ namespace ShadowPeer.DataModels
             table.AddRow("InfoHash", $"[bold blue]{InfoHash}[/]");
             table.AddRow("UrlEncoded Infohash", $"[italic]{urlEncodedHash}[/]");
             table.AddRow("PassKey", string.IsNullOrWhiteSpace(PassKey) ? "[grey]None[/]" : $"[bold yellow]{PassKey}[/]");
+            table.AddRow("Host", Host);
+            table.AddRow("Port", Port);
 
-            if (AnnounceUrls?.Any() == true)
+            if (!string.IsNullOrWhiteSpace(AnnounceUrls) && AnnounceUrls != "No announce URL provided.")
             {
-                table.AddRow("Announce URLs", string.Join(", ", AnnounceUrls));
+                table.AddRow("Announce URLs", AnnounceUrls);
             }
 
             if (Trackers?.Any() == true)
@@ -250,9 +267,6 @@ namespace ShadowPeer.DataModels
                 .Header("[bold underline blue]Loaded torrent info[/]", Justify.Center)
                 .BorderColor(Color.CadetBlue)
                 .Padding(1, 1));
-
-            return "[Torrent metadata table displayed in console]";
         }
-
     }
 }

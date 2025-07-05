@@ -1,6 +1,6 @@
-﻿using System;
-using System.Threading.Tasks;
-using ShadowPeer;
+﻿using BencodeNET.Torrents;
+using ShadowPeer.DataModels;
+using ShadowPeer.Helpers;
 using ShadowPeer.Core;
 using Spectre.Console;
 
@@ -8,30 +8,16 @@ class Program
 {
     static async Task Main()
     {
-        string path = "C:\\figaro.torrent";
+        // Set console output encoding to UTF-8 for proper icon display
+        // it is recommended to use Windows Terminal or a compatible terminal that supports UTF-8.
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-        try
-        {
-            var decoder = new TorrentHandler(path);
+        var browser = new CLIFileBrowser();
 
-            var torrent = await decoder.LoadTorrentAsync();
-            if (torrent == null)
-            {
-                AnsiConsole.MarkupLine("[red]Failed to load torrent. Aborting.[/]");
-                return;
-            }
+        browser.DisplayIcons = true;
+        await browser.GetFilePath();
+        AnsiConsole.MarkupLine("[bold green]Welcome to ShadowPeer Torrent Client![/]");
 
 
-            AnsiConsole.MarkupLine("[green]Torrent info:[/]");
-
-            AnsiConsole.WriteLine(torrent.ShowTorrentMeta());
-
-            await Network.SendTCPTest();
-
-        }
-        catch (Exception ex)
-        {
-            AnsiConsole.MarkupLine($"[red]Unexpected error: {ex.Message}[/]");
-        }
     }
 }

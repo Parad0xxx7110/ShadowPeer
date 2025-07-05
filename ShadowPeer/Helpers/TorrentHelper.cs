@@ -1,10 +1,12 @@
-﻿using Spectre.Console;
+﻿using ShadowPeer.DataModels;
+using Spectre.Console;
+using System.Diagnostics;
 using System.Net;
 using System.Web;
 
 namespace ShadowPeer.Helpers
 {
-    public static class PassKeyExtractor
+    public static class TorrentHelper
     {
         private static readonly string[] DefaultQueryKeys = { "passkey", "key", "token", "auth" };
         private static readonly string[] DefaultPathIdentifiers = { "announce", "announce.php", "scrape" };
@@ -105,25 +107,30 @@ namespace ShadowPeer.Helpers
             return Task.FromResult(string.Empty);
         }
 
-
-
-
-        // Parse compact list (blob) reponse from BT tracker
-        private static List<IPEndPoint> ParseCompactPeersList(ReadOnlySpan<byte> data)
+        public static string? GetFirstTrackerUrl(List<IList<string>> trackers)
         {
-            var list = new List<IPEndPoint>();
+            if (trackers == null || trackers.Count == 0)
+                return null;
 
-            // One ip address is 4 bytes, port is 2 bytes (big-endian) = 6 bytes total
-            for (int i = 0; i + 6 <= data.Length; i += 6)
+            foreach (var innerList in trackers)
             {
-                // Extract IP address (4 bytes)
-                var ip = new IPAddress([data[i], data[i + 1], data[i + 2], data[i + 3]]);
-                // Extract port (2 bytes, big-endian)
-                var port = data[i + 4] << 8 | data[i + 5];
-
-                list.Add(new IPEndPoint(ip, port));
+                if (innerList != null && innerList.Count > 0)
+                    return innerList[0];
             }
-            return list;
+
+            return null;
+        }
+
+        public static string? GetPrimaryAnnounceUrl(TorrentMetadatas torrent)
+        {
+            if (torrent.Trackers == null || torrent.Trackers.Count == 0)
+            {
+                Debug.WriteLine("No trackers available in torrent");
+                return null;
+            }
+
+            // Take the first tracker from the list, private tracker use only one tracker most of the time 
+            return torrent.Trackers.FirstOrDefault()?.FirstOrDefault() ?? string.Empty;
         }
     }
 }

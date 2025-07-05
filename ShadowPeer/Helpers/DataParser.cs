@@ -153,25 +153,30 @@ namespace ShadowPeer.Helpers
         /// </summary>
         public static string UrlEncodeInfoHashBytes(byte[] bytes)
         {
-            var sb = new StringBuilder(bytes.Length * 3); // Worst case all bytes encoded as %XX
+            var sb = new StringBuilder(bytes.Length * 3);
 
             foreach (var b in bytes)
             {
-                char c = (char)b;
-                if ((c >= 'a' && c <= 'z') ||
-                    (c >= 'A' && c <= 'Z') ||
-                    (c >= '0' && c <= '9') ||
-                    c == '.' || c == '-' || c == '_' || c == '~') // Unreserved URI characters
+                // Only encode unreserved characters from RFC 3986
+                if ((b >= 0x30 && b <= 0x39) || // 0-9
+                    (b >= 0x41 && b <= 0x5A) || // A-Z
+                    (b >= 0x61 && b <= 0x7A) || // a-z
+                    b == 0x2D || // -
+                    b == 0x2E || // .
+                    b == 0x5F || // _
+                    b == 0x7E)   // ~
                 {
-                    sb.Append(c);
+                    sb.Append((char)b);
                 }
                 else
                 {
                     sb.Append('%');
-                    sb.Append(b.ToString("x2")); // Lowercase hex encoding 
+                    sb.Append(b.ToString("x2")); // uppercase hexadecimal
                 }
             }
+
             return sb.ToString();
         }
+
     }
 }

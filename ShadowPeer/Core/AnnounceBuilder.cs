@@ -3,6 +3,7 @@ using ShadowPeer.Helpers;
 using System.Collections.Specialized;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Web;
 
 /// <summary>
@@ -11,7 +12,7 @@ using System.Web;
 /// </summary>
 public class AnnounceBuilder
 {
-    private const int DefaultPort = 25341;
+    private const int DefaultPort = 25341; // Default port for the client, totally arbitrary and random here.
     private const int DefaultNumWant = 30;
 
     private byte[]? _infoHash;
@@ -20,9 +21,9 @@ public class AnnounceBuilder
     private string? _trackerUrl, _event, _key, _trackerId, _ipv6, _peerId, _passkey, _ip, _extra;
 
     /// <summary>
-    /// Initializes the builder from a TorrentMdl.
+    /// Initializes the builder from a TorrentMetadatas object.
     /// </summary>
-    public AnnounceBuilder(Torrents torrent)
+    public AnnounceBuilder(TorrentMetadatas torrent)
     {
         ArgumentNullException.ThrowIfNull(torrent);
 
@@ -91,9 +92,9 @@ public class AnnounceBuilder
         return this;
     }
 
-    public AnnounceBuilder WithEvent(string torrentEvent)
+    public AnnounceBuilder WithEvent(string trackerEvent)
     {
-        _event = torrentEvent;
+        _event = trackerEvent;
         return this;
     }
 
@@ -123,45 +124,49 @@ public class AnnounceBuilder
 
     /// <summary>
     /// Builds the final announce URL with all required and optional parameters.
-    /// Automatically decides whether to include the passkey in the path or as a query parameter.
+    /// Automatically decides whether to include the passkey in the path or as a query parameter :).
     /// </summary>
-    /// <returns>Fully formed announce URL ready for HTTP GET</returns>
+    /// <returns>A validated payload string of the request for HTTP over TCP</returns>
     /// <exception cref="InvalidOperationException">Thrown if required fields are missing or invalid</exception>
     public string Build()
     {
         ValidateRequiredFields();
 
         var uriBuilder = new UriBuilder(_trackerUrl!);
-        var query = BuildQueryParameters();
 
-        // Automatically decide how to inject the passkey (path or query)
+        // Insertion automatique de la passkey dans le path si nécessaire
+        bool passkeyInPath = !string.IsNullOrWhiteSpace(_passkey) &&
+                             uriBuilder.Path.Contains(_passkey, StringComparison.OrdinalIgnoreCase);
+
         if (!string.IsNullOrWhiteSpace(_passkey))
         {
             if (uriBuilder.Path.Contains("announce", StringComparison.OrdinalIgnoreCase) &&
-                !uriBuilder.Path.Contains(_passkey))
+                !passkeyInPath)
             {
                 uriBuilder.Path = InsertPasskeyIntoPath(uriBuilder.Path, _passkey);
             }
-            else
-            {
-                query["passkey"] = _passkey;
-            }
+            
         }
 
-        // Merge additional custom parameters
-        if (!string.IsNullOrWhiteSpace(_extra))
+      
+        var query = BuildQueryParameters(excludeInfoHash: true);
+
+        var sb = new StringBuilder();
+        string encodedInfoHash = DataParser.UrlEncodeInfoHashBytes(_infoHash!);
+
+        sb.Append($"info_hash={encodedInfoHash}");
+
+        foreach (string? key in query.AllKeys)
         {
-            var extraParsed = HttpUtility.ParseQueryString(_extra);
-            foreach (string? key in extraParsed)
-            {
-                if (!string.IsNullOrWhiteSpace(key))
-                    query[key] = extraParsed[key];
-            }
+            if (key == null) continue;
+            sb.Append('&').Append(key).Append('=').Append(query[key]);
         }
 
-        uriBuilder.Query = query.ToString();
-        return uriBuilder.ToString();
+        return $"{uriBuilder.Path}?{sb}";
     }
+
+
+
 
     private void ValidateRequiredFields()
     {
@@ -185,16 +190,22 @@ public class AnnounceBuilder
         return "/" + string.Join('/', segments);
     }
 
-    private NameValueCollection BuildQueryParameters()
+    private NameValueCollection BuildQueryParameters(bool excludeInfoHash = false)
     {
         var query = HttpUtility.ParseQueryString(string.Empty);
 
-        query["info_hash"] = DataParser.UrlEncodeInfoHashBytes(_infoHash);
+        if (!excludeInfoHash)
+            query["info_hash"] = DataParser.UrlEncodeInfoHashBytes(_infoHash!);
+
         query["peer_id"] = _peerId;
-        query["port"] = _port?.ToString() ?? DefaultPort.ToString();
+        query["port"] = (_port ?? DefaultPort).ToString();
         query["uploaded"] = _uploaded.ToString();
         query["downloaded"] = _downloaded.ToString();
         query["left"] = _left.ToString();
+        query["compact"] = "1";
+        query["numwant"] = DefaultNumWant.ToString();
+        query["supportcrypto"] = "1";
+        query["no_peer_id"] = "1";
 
         if (!string.IsNullOrWhiteSpace(_event)) query["event"] = _event;
         if (!string.IsNullOrWhiteSpace(_key)) query["key"] = _key;
@@ -202,19 +213,72 @@ public class AnnounceBuilder
         if (!string.IsNullOrWhiteSpace(_ip)) query["ip"] = _ip;
         if (!string.IsNullOrWhiteSpace(_ipv6)) query["ipv6"] = _ipv6;
 
-        query["compact"] = "1";
-        query["numwant"] = DefaultNumWant.ToString();
-        query["supportcrypto"] = "1";
-        query["no_peer_id"] = "1";
+        if (!string.IsNullOrWhiteSpace(_extra))
+        {
+            var parts = _extra.Split('&', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in parts)
+            {
+                var kv = part.Split('=');
+                if (kv.Length == 2)
+                    query[kv[0]] = kv[1];
+            }
+        }
 
-        return query;
+        // Ordre des clés souhaité
+        var KeysOrder = new[]
+        {
+        "info_hash",
+        "peer_id",
+        "port",
+        "uploaded",
+        "downloaded",
+        "left",
+        "event",
+        "key",
+        "compact",
+        "numwant",
+        "supportcrypto",
+        "no_peer_id",
+        "trackerid",
+        "ip",
+        "ipv6"
+    };
+
+        var orderedQuery = new NameValueCollection();
+
+        // Ajout des clés dans l'ordre demandé si elles existent dans query
+        foreach (var key in KeysOrder)
+        {
+            var val = query[key];
+            if (!string.IsNullOrWhiteSpace(val))
+            {
+                orderedQuery[key] = val;
+            }
+        }
+
+        // Ajout des clés restantes qui ne sont pas dans orderedKeys
+        foreach (string key in query.AllKeys!)
+        {
+            if (!KeysOrder.Contains(key))
+            {
+                var val = query[key];
+                if (!string.IsNullOrWhiteSpace(val))
+                {
+                    orderedQuery[key] = val;
+                }
+            }
+        }
+
+        return orderedQuery;
     }
 
+
+
     /// <summary>
-    /// Generates a default peer ID if none was set. Format: -SP0001-XXXXXXXXXXXX
+    /// Generates a default peer ID if none was set. Format: -SP1337-XXXXXXXXXXXX
     /// </summary>
     private static string GeneratePeerId()
     {
-        return "-SP0001-" + Guid.NewGuid().ToString("N")[..12];
+        return "-SP1337-" + Guid.NewGuid().ToString("N")[..12];
     }
 }

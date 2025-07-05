@@ -67,6 +67,8 @@ namespace ShadowPeer.Core
             };
         }
 
+
+
         private static string GeneratePeerId(string prefix)
         {
             if (prefix.Length > 20)

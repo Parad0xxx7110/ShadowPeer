@@ -2,9 +2,8 @@
 {
     internal class Peer
     {
-
-        public string IP { get; set; } = string.Empty;
-        public ushort Port { get; set; }
+        public string? IP { get; set; }
+        public ushort? Port { get; set; }
 
     }
 }
