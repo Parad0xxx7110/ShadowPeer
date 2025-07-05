@@ -11,7 +11,7 @@ namespace ShadowPeer.Helpers
         private const int PeerCompactSize = 6; // Compact peer format: 4 bytes IP + 2 bytes port (big endian)
 
         /// <summary>
-        /// Parses the raw HTTP response (headers + Bencode body) received from the tracker.
+        /// Parses the raw HTTP response (headers + Bencode body) received from the BitTorrent tracker.
         /// </summary>
         /// <param name="responseBytes">Raw response bytes (HTTP headers + Bencode body)</param>
         /// <param name="responseModel">Output: DTO model containing extracted data</param>
@@ -20,7 +20,7 @@ namespace ShadowPeer.Helpers
         {
             responseModel = new TrackerResponse();
 
-            // Find the end of the HTTP header section
+            // Search for the end of the HTTP header section
             int headerEndIndex = IndexOfSequence(responseBytes, "\r\n\r\n"u8.ToArray());
             if (headerEndIndex == -1)
             {

@@ -134,7 +134,7 @@ public class AnnounceBuilder
 
         var uriBuilder = new UriBuilder(_trackerUrl!);
 
-        // Insertion automatique de la passkey dans le path si nécessaire
+
         bool passkeyInPath = !string.IsNullOrWhiteSpace(_passkey) &&
                              uriBuilder.Path.Contains(_passkey, StringComparison.OrdinalIgnoreCase);
 
@@ -145,10 +145,10 @@ public class AnnounceBuilder
             {
                 uriBuilder.Path = InsertPasskeyIntoPath(uriBuilder.Path, _passkey);
             }
-            
+
         }
 
-      
+
         var query = BuildQueryParameters(excludeInfoHash: true);
 
         var sb = new StringBuilder();
@@ -224,7 +224,7 @@ public class AnnounceBuilder
             }
         }
 
-        // Ordre des clés souhaité
+
         var KeysOrder = new[]
         {
         "info_hash",
@@ -246,7 +246,7 @@ public class AnnounceBuilder
 
         var orderedQuery = new NameValueCollection();
 
-        // Ajout des clés dans l'ordre demandé si elles existent dans query
+
         foreach (var key in KeysOrder)
         {
             var val = query[key];
@@ -256,7 +256,7 @@ public class AnnounceBuilder
             }
         }
 
-        // Ajout des clés restantes qui ne sont pas dans orderedKeys
+
         foreach (string key in query.AllKeys!)
         {
             if (!KeysOrder.Contains(key))

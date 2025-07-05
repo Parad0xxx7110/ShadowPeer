@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace ShadowPeer.DataModels
+namespace ShadowPeer.Helpers
 {
-    internal class TrackerAnnounce
+    internal class Math
     {
     }
 }

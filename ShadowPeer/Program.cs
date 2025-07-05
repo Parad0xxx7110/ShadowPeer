@@ -1,22 +1,17 @@
-﻿using BencodeNET.Torrents;
-using ShadowPeer.DataModels;
-using ShadowPeer.Helpers;
-using ShadowPeer.Core;
-using Spectre.Console;
+﻿using Spectre.Console;
 
 class Program
 {
     static async Task Main()
     {
         // Set console output encoding to UTF-8 for proper icon display
-        // it is recommended to use Windows Terminal or a compatible terminal that supports UTF-8.
+        // it is recommended to use Windows Terminal or a compatible terminal with a proper UTF-8 support.
         Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-        var browser = new CLIFileBrowser();
+        var initScreen = new InitScreen();
+        initScreen.ShowPrompt();
+        AnsiConsole.Clear();
 
-        browser.DisplayIcons = true;
-        await browser.GetFilePath();
-        AnsiConsole.MarkupLine("[bold green]Welcome to ShadowPeer Torrent Client![/]");
 
 
     }

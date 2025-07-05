@@ -6,6 +6,8 @@ using System.Text.RegularExpressions;
 
 namespace ShadowPeer.DataModels
 {
+
+    
     public class TorrentMetadatas
     {
         private string _name = string.Empty;
@@ -204,7 +206,7 @@ namespace ShadowPeer.DataModels
         public string Host => _host;
         public string Port => _port;
 
-        // Manual mapping from BencodeNET Torrent obj to this model with fallback and validation
+        // Manual mapping from BencodeNET Torrent obj to this model for validation and fallbacks.
         public static TorrentMetadatas MapFromBencodeTorrent(Torrent torrent)
         {
             if (torrent == null)

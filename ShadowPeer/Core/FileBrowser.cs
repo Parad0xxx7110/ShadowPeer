@@ -5,20 +5,20 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-
+// Code by Cyril "Parad0x" Bouvier
 // Inspired by Lutonet code -> https://github.com/Lutonet/SpectreConsoleFileBrowser
 
 namespace ShadowPeer.Core
 {
-    public class CLIFileBrowser
+    public class FileBrowser
     {
         public bool DisplayIcons { get; set; } = true;
-        public bool IsWindows => Environment.OSVersion.Platform.ToString().ToLower().StartsWith("win");
+        public static bool IsWindows => Environment.OSVersion.Platform.ToString().ToLower().StartsWith("win");
         public int PageSize { get; set; } = 15;
         public bool CanCreateFolder { get; set; } = true;
 
         public string ActualFolder { get; set; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        public string SelectedFile { get; set; }
+        public string? SelectedFile { get; set; }
 
         // UI Texts
         public string LevelUpText { get; set; } = "Go to upper level";
@@ -34,44 +34,47 @@ namespace ShadowPeer.Core
         private const string NewFolderCommand = "__NEW__";
         private const string CurrentFolderCommand = "__CURRENT__";
 
-        public async Task<string> GetFilePath(string folder = null) => await GetPath(folder ?? ActualFolder, true);
-        public async Task<string> GetFolderPath(string folder = null) => await GetPath(folder ?? ActualFolder, false);
+        public async Task<string> GetFilePath(string? folder = null) => await GetPath(folder ?? ActualFolder, true);
+        public async Task<string> GetFolderPath(string? folder = null) => await GetPath(folder ?? ActualFolder, false);
 
-        private async Task<string> GetPath(string initialFolder, bool selectFile)
+        private async Task<string>  GetPath(string initialFolder, bool selectFile)
         {
-            string currentFolder = initialFolder;
-
-            while (true)
+            return await Task.Run(() =>
             {
-                AnsiConsole.Clear();
-                DrawHeader(selectFile);
-                DrawCurrentPath(currentFolder);
+                string currentFolder = initialFolder;
 
-                var choices = BuildChoices(currentFolder, selectFile);
-                string selection = PromptSelection(selectFile, choices.Keys);
-                string selectedPath = choices[selection];
-
-                switch (selectedPath)
+                while (true)
                 {
-                    case DriveCommand:
-                        currentFolder = PromptDriveSelection();
-                        break;
+                    AnsiConsole.Clear();
+                    DrawHeader(selectFile);
+                    DrawCurrentPath(currentFolder);
 
-                    case NewFolderCommand:
-                        currentFolder = TryCreateNewFolder(currentFolder);
-                        break;
+                    var choices = BuildChoices(currentFolder, selectFile);
+                    string selection = PromptSelection(selectFile, choices.Keys);
+                    string selectedPath = choices[selection];
 
-                    case CurrentFolderCommand:
-                        return currentFolder;
+                    switch (selectedPath)
+                    {
+                        case DriveCommand:
+                            currentFolder = PromptDriveSelection();
+                            break;
 
-                    default:
-                        if (Directory.Exists(selectedPath))
-                            currentFolder = selectedPath;
-                        else if (File.Exists(selectedPath))
-                            return selectedPath;
-                        break;
+                        case NewFolderCommand:
+                            currentFolder = TryCreateNewFolder(currentFolder);
+                            break;
+
+                        case CurrentFolderCommand:
+                            return currentFolder;
+
+                        default:
+                            if (Directory.Exists(selectedPath))
+                                currentFolder = selectedPath;
+                            else if (File.Exists(selectedPath))
+                                return selectedPath;
+                            break;
+                    }
                 }
-            }
+            });
         }
 
         private void DrawHeader(bool isFileMode)
@@ -191,9 +194,9 @@ namespace ShadowPeer.Core
                 : $"[green]{escapedLabel}[/]";
         }
 
-        private string[] SafeGet(Func<string[]> getter)
+        private static string[] SafeGet(Func<string[]> getter)
         {
-            try { return getter(); } catch { return Array.Empty<string>(); }
+            try { return getter(); } catch { return []; }
         }
     }
 }

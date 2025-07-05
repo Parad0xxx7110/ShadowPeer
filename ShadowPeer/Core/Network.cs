@@ -1,11 +1,8 @@
 ﻿using ShadowPeer.DataModels;
 using ShadowPeer.Helpers;
 using Spectre.Console;
-using System;
-using System.IO;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Tasks;
 using System.Web;
 
 namespace ShadowPeer.Core
@@ -13,7 +10,7 @@ namespace ShadowPeer.Core
     internal static class Network
     {
         private const int BufferSize = 8192;
-        private const int ResponseTimeoutMs = 10000;
+        private const int Timeout = 10000;
 
         public static async Task SendAnnounceOverTCPAsync(TorrentMetadatas torrentMeta, string announcePayload)
         {
@@ -48,10 +45,11 @@ namespace ShadowPeer.Core
 
                 var stream = client.GetStream();
 
-                
-                stream.ReadTimeout = ResponseTimeoutMs;
+
+                stream.ReadTimeout = Timeout;
 
                 var requestBytes = Encoding.ASCII.GetBytes(finalRequest);
+
                 await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
                 AnsiConsole.MarkupLine("[green]Request sent successfully.[/]");
 
@@ -69,8 +67,9 @@ namespace ShadowPeer.Core
                 } while (bytesRead > 0);
 
                 var responseBytes = ms.ToArray();
+
                 AnsiConsole.MarkupLine("[green]Response received.[/]");
-              
+
                 if (DataParser.TryParseTrackerResponse(responseBytes, out var trackerResponse))
                 {
                     AnsiConsole.WriteLine($"Seeders: {trackerResponse.Seeders}");
@@ -117,7 +116,7 @@ namespace ShadowPeer.Core
             string host = "tracker.p2p-world.net";
             int trackerPort = 8080;
 
-            
+
             string infoHashEncoded = "%de%bf%9b%06%1c%e6%d3%f1CAR%e9%b2%0b%81%87%feVz%b4";
             string peerId = "-DE1200-hQj0UCmYXZ7w";
             int peerPort = 25341;
@@ -149,7 +148,7 @@ namespace ShadowPeer.Core
 
                 var stream = client.GetStream();
 
-                stream.ReadTimeout = ResponseTimeoutMs;
+                stream.ReadTimeout = Timeout;
 
                 var requestBytes = Encoding.ASCII.GetBytes(finalRequest);
                 await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
@@ -171,12 +170,6 @@ namespace ShadowPeer.Core
 
                 var responseBytes = ms.ToArray();
                 AnsiConsole.MarkupLine("[green]Response received.[/]");
-
-                // Dump de la réponse brute en ASCII (tu peux aussi tenter UTF8 si besoin)
-                string responseText = Encoding.ASCII.GetString(responseBytes);
-                Console.WriteLine("=== RAW RESPONSE START ===");
-                Console.WriteLine(responseText);
-                Console.WriteLine("=== RAW RESPONSE END ===");
 
                 if (DataParser.TryParseTrackerResponse(responseBytes, out var trackerResponse))
                 {
