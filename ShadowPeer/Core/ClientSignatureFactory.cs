@@ -36,6 +36,7 @@ namespace ShadowPeer.Core
                                 .Cast<TorrentClient>()
                                 .Where(c => c != TorrentClient.Random)
                                 .ToArray();
+
                 client = clients[_rnd.Value.Next(clients.Length)];
             }
 

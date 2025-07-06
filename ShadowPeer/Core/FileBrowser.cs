@@ -1,9 +1,4 @@
 ﻿using Spectre.Console;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 
 // Code by Cyril "Parad0x" Bouvier
 // Inspired by Lutonet code -> https://github.com/Lutonet/SpectreConsoleFileBrowser
@@ -37,7 +32,7 @@ namespace ShadowPeer.Core
         public async Task<string> GetFilePath(string? folder = null) => await GetPath(folder ?? ActualFolder, true);
         public async Task<string> GetFolderPath(string? folder = null) => await GetPath(folder ?? ActualFolder, false);
 
-        private async Task<string>  GetPath(string initialFolder, bool selectFile)
+        private async Task<string> GetPath(string initialFolder, bool selectFile)
         {
             return await Task.Run(() =>
             {

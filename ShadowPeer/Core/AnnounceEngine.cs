@@ -3,30 +3,38 @@ using System.Diagnostics;
 
 namespace ShadowPeer.Core
 {
-    internal class AnnounceEngine
+    internal class AnnounceEngine : IDisposable
     {
         private readonly TorrentMetadatas _torrentMeta;
         private readonly ClientSignature _clientSignature;
         private readonly Stopwatch _trackerIntervallTimer = new();
-        private CancellationTokenSource _cancellationTokenSource = new();
+        private CancellationTokenSource _cts = new();
 
-        enum AnnounceState { NotStarted, Started, Running, Stopped }
+       
 
 
 
-        public AnnounceEngine(TorrentMetadatas torrentMeta, ClientSignature clientSignature)
+        enum AnnounceEngineState { Ready, Starting, Running, Stopped, Error }
+
+
+
+        public AnnounceEngine(TorrentMetadatas metas, ClientSignature signature)
         {
-            ArgumentNullException.ThrowIfNull(torrentMeta, nameof(torrentMeta));
-            ArgumentNullException.ThrowIfNull(clientSignature, nameof(clientSignature));
+            ArgumentNullException.ThrowIfNull(metas, nameof(metas));
+            ArgumentNullException.ThrowIfNull(signature, nameof(signature));
 
-            _clientSignature = clientSignature;
-            _torrentMeta = torrentMeta;
+            _clientSignature = signature;
+            _torrentMeta = metas;
 
         }
 
         // Wrap all in a single method
         private void StartEngine()
         {
+
+
+
+
 
 
         }
@@ -51,5 +59,9 @@ namespace ShadowPeer.Core
 
         }
 
+        public void Dispose()
+        {
+            ((IDisposable)_cts).Dispose();
+        }
     }
 }

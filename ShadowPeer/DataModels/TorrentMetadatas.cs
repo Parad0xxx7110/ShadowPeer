@@ -12,7 +12,7 @@ namespace ShadowPeer.DataModels
     {
         private string _name = string.Empty;
         private string _hash = string.Empty;
-        private byte[] _hashBytes = Array.Empty<byte>();
+        private byte[] _hashBytes = [];
         private string _comment = string.Empty;
         private string _createdBy = string.Empty;
         private string _creationDate = string.Empty;
@@ -190,7 +190,7 @@ namespace ShadowPeer.DataModels
 
                     try
                     {
-                        var uri = new Uri(_announceUrl);
+                         var uri = new Uri(_announceUrl);
                         _host = uri.Host;
                         _port = uri.Port.ToString();
                     }
@@ -229,7 +229,7 @@ namespace ShadowPeer.DataModels
         // Shouldn't be here but i'm lazy AF.
         public void ShowTorrentMeta()
         {
-            string urlEncodedHash = DataParser.UrlEncodeInfoHashBytes(InfoHashBytes);
+            string urlEncodedHash = DataParser.InfoHashBytesToUrl(InfoHashBytes);
 
             var table = new Table()
                 .AddColumn(new TableColumn("[u]Property[/]").Centered())

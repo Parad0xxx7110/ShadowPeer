@@ -152,7 +152,7 @@ public class AnnounceBuilder
         var query = BuildQueryParameters(excludeInfoHash: true);
 
         var sb = new StringBuilder();
-        string encodedInfoHash = DataParser.UrlEncodeInfoHashBytes(_infoHash!);
+        string encodedInfoHash = DataParser.InfoHashBytesToUrl(_infoHash!);
 
         sb.Append($"info_hash={encodedInfoHash}");
 
@@ -195,7 +195,7 @@ public class AnnounceBuilder
         var query = HttpUtility.ParseQueryString(string.Empty);
 
         if (!excludeInfoHash)
-            query["info_hash"] = DataParser.UrlEncodeInfoHashBytes(_infoHash!);
+            query["info_hash"] = DataParser.InfoHashBytesToUrl(_infoHash!);
 
         query["peer_id"] = _peerId;
         query["port"] = (_port ?? DefaultPort).ToString();

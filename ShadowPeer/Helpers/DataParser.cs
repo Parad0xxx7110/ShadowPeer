@@ -14,14 +14,14 @@ namespace ShadowPeer.Helpers
         /// Parses the raw HTTP response (headers + Bencode body) received from the BitTorrent tracker.
         /// </summary>
         /// <param name="responseBytes">Raw response bytes (HTTP headers + Bencode body)</param>
-        /// <param name="responseModel">Output: DTO model containing extracted data</param>
+        /// <param name="responseDto">Output: DTO model containing extracted data</param>
         /// <returns>True if parsing succeeded, false otherwise</returns>
-        public static bool TryParseTrackerResponse(byte[] responseBytes, out TrackerResponse responseModel)
+        public static bool TryParseTrackerResponse(byte[] responseBytes, out TrackerResponse responseDto)
         {
-            responseModel = new TrackerResponse();
+            responseDto = new TrackerResponse();
 
             // Search for the end of the HTTP header section
-            int headerEndIndex = IndexOfSequence(responseBytes, "\r\n\r\n"u8.ToArray());
+            int headerEndIndex = SearchBytePattern(responseBytes, "\r\n\r\n"u8.ToArray());
             if (headerEndIndex == -1)
             {
                 // Invalid response format, no header-body separator found
@@ -29,7 +29,7 @@ namespace ShadowPeer.Helpers
             }
 
             // Extract Bencode body from the response
-            int bodyStartIndex = headerEndIndex + 4;
+            int bodyStartIndex = headerEndIndex + 4; // Skip the "\r\n\r\n" sequence
             byte[] bodyBytes = new byte[responseBytes.Length - bodyStartIndex];
             Array.Copy(responseBytes, bodyStartIndex, bodyBytes, 0, bodyBytes.Length);
 
@@ -39,10 +39,10 @@ namespace ShadowPeer.Helpers
                 var dict = parser.Parse<BDictionary>(bodyBytes);
 
                 // Extract common fields
-                responseModel.Seeders = GetIntIfExists(dict, "complete");
-                responseModel.Leechers = GetIntIfExists(dict, "incomplete");
-                responseModel.Interval = GetIntIfExists(dict, "interval");
-                responseModel.MinInterval = GetIntIfExists(dict, "min interval");
+                responseDto.Seeders = TryGetInt(dict, "complete");
+                responseDto.Leechers = TryGetInt(dict, "incomplete");
+                responseDto.Interval = TryGetInt(dict, "interval");
+                responseDto.MinInterval = TryGetInt(dict, "min interval");
 
                 // Extract peers list
                 if (!dict.TryGetValue("peers", out var peersObj))
@@ -51,7 +51,7 @@ namespace ShadowPeer.Helpers
                 if (peersObj is BString peersBStr)
                 {
                     // Compact peer format
-                    responseModel.PeersCompact = peersBStr.Value.ToArray();
+                    responseDto.PeersCompact = peersBStr.Value.ToArray();
                 }
                 else if (peersObj is BList peersList)
                 {
@@ -70,7 +70,7 @@ namespace ShadowPeer.Helpers
                             }
                         }
                     }
-                    responseModel.PeersList = parsedPeers;
+                    responseDto.PeersList = parsedPeers;
                 }
                 else
                 {
@@ -89,7 +89,7 @@ namespace ShadowPeer.Helpers
         /// <summary>
         /// Finds the first occurrence of a byte pattern within a byte array.
         /// </summary>
-        private static int IndexOfSequence(byte[] buffer, byte[] pattern)
+        private static int SearchBytePattern(byte[] buffer, byte[] pattern)
         {
             for (int i = 0; i <= buffer.Length - pattern.Length; i++)
             {
@@ -111,10 +111,11 @@ namespace ShadowPeer.Helpers
         /// <summary>
         /// Tries to extract an integer value from a BDictionary by key.
         /// </summary>
-        private static int? GetIntIfExists(BDictionary dict, string key)
+        private static int? TryGetInt(BDictionary dict, string key)
         {
             if (dict.TryGetValue(key, out var val) && val is BNumber num)
             {
+                // Recast to int and return
                 return (int)num.Value;
             }
             return null;
@@ -149,9 +150,10 @@ namespace ShadowPeer.Helpers
         }
 
         /// <summary>
-        /// Encodes a byte array representing an info_hash into a URL-encoded string.
+        /// Encodes a byte array representing an info_hash into a URL-encoded string
+        /// ready for use in HTTP requests.
         /// </summary>
-        public static string UrlEncodeInfoHashBytes(byte[] bytes)
+        public static string InfoHashBytesToUrl(byte[] bytes)
         {
             var sb = new StringBuilder(bytes.Length * 3);
 
@@ -171,7 +173,7 @@ namespace ShadowPeer.Helpers
                 else
                 {
                     sb.Append('%');
-                    sb.Append(b.ToString("x2")); // uppercase hexadecimal
+                    sb.Append(b.ToString("x2")); // lower case hex
                 }
             }
 
