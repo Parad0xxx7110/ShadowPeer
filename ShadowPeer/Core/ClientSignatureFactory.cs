@@ -1,5 +1,9 @@
 ﻿using ShadowPeer.DataModels;
-using System.Collections;
+using System.Security.Cryptography;
+
+
+
+// STABLE & SEALED
 
 namespace ShadowPeer.Core
 {
@@ -87,10 +91,15 @@ namespace ShadowPeer.Core
 
         private static string RandomString(int length, string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
         {
-            var random = _rnd.Value;
-            return new string(Enumerable.Repeat(chars, length)
-                .Select(s => s[random.Next(s.Length)])
-                .ToArray());
+            var data = new byte[length];
+            RandomNumberGenerator.Fill(data);
+            var result = new char[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = chars[data[i] % chars.Length];
+            }
+            return new string(result);
         }
+
     }
 }

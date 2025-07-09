@@ -1,7 +1,6 @@
 ﻿using ShadowPeer.DataModels;
 using Spectre.Console;
 using System.Diagnostics;
-using System.Net;
 using System.Web;
 
 namespace ShadowPeer.Helpers
@@ -25,18 +24,26 @@ namespace ShadowPeer.Helpers
                 var pathResult = await ExtractFromPathAsync(uri);
                 if (!string.IsNullOrEmpty(pathResult))
                 {
-                    AnsiConsole.MarkupLine("[green]Method one found the passkey ![/]");
+                    AnsiConsole.MarkupLine("[green]Method 1 found the passkey ![/]");
                     return pathResult;
                 }
 
                 Console.WriteLine($"Extracting passkey with method 2...");
                 var queryResult = await ExtractFromQueryAsync(uri);
                 if (!string.IsNullOrEmpty(queryResult))
+                {
+                    AnsiConsole.MarkupLine("[green]Method 2 found the passkey ![/]");
                     return queryResult;
+
+                }
+
                 Console.WriteLine($"Extracting passkey with method 3...");
                 var fragResult = await ExtractFromFragmentAsync(uri);
                 if (!string.IsNullOrEmpty(fragResult))
+                {
+                    AnsiConsole.MarkupLine("[green]Method 3 found the passkey ![/]");
                     return fragResult;
+                }
             }
             catch { }
 

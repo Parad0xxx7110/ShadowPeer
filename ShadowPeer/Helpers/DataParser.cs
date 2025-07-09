@@ -86,6 +86,7 @@ namespace ShadowPeer.Helpers
             }
         }
 
+        #region Helpers funcs
         /// <summary>
         /// Finds the first occurrence of a byte pattern within a byte array.
         /// </summary>
@@ -107,6 +108,7 @@ namespace ShadowPeer.Helpers
             }
             return -1;
         }
+
 
         /// <summary>
         /// Tries to extract an integer value from a BDictionary by key.
@@ -150,8 +152,8 @@ namespace ShadowPeer.Helpers
         }
 
         /// <summary>
-        /// Encodes a byte array representing an info_hash into a URL-encoded string
-        /// ready for use in HTTP requests.
+        /// Aggressivly encode an array of bytes into a URL-encoded string
+        /// ready for use with BitTorrent trackers.
         /// </summary>
         public static string InfoHashBytesToUrl(byte[] bytes)
         {
@@ -181,4 +183,5 @@ namespace ShadowPeer.Helpers
         }
 
     }
+    #endregion
 }

@@ -1,16 +1,16 @@
 ﻿using BencodeNET.Torrents;
 using ShadowPeer.Helpers;
 using Spectre.Console;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ShadowPeer.DataModels
 {
 
-    
+
     public class TorrentMetadatas
     {
         private string _name = string.Empty;
+        private long _size = 0;
         private string _hash = string.Empty;
         private byte[] _hashBytes = [];
         private string _comment = string.Empty;
@@ -40,6 +40,19 @@ namespace ShadowPeer.DataModels
                 {
                     _name = value.Trim();
                 }
+            }
+        }
+
+        public required long Size
+        {
+            get => _size;
+            set
+            {
+                if (value < 0)
+                {
+                    throw new ArgumentException("Size cannot be negative.");
+                }
+                _size = value;
             }
         }
 
@@ -190,7 +203,7 @@ namespace ShadowPeer.DataModels
 
                     try
                     {
-                         var uri = new Uri(_announceUrl);
+                        var uri = new Uri(_announceUrl);
                         _host = uri.Host;
                         _port = uri.Port.ToString();
                     }
@@ -215,6 +228,7 @@ namespace ShadowPeer.DataModels
             return new TorrentMetadatas
             {
                 Name = torrent.DisplayName,
+                Size = torrent.TotalSize,
                 Comment = torrent.Comment,
                 CreatedBy = torrent.CreatedBy,
                 CreationDate = torrent.CreationDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown",

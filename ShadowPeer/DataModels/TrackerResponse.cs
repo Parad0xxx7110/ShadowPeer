@@ -2,8 +2,8 @@
 {
     internal class TrackerResponse
     {
-        public int? Seeders { get; set; }         
-        public int? Leechers { get; set; }       
+        public int? Seeders { get; set; }
+        public int? Leechers { get; set; }
         public int? Interval { get; set; }
         public int? MinInterval { get; set; }
         public byte[]? PeersCompact { get; set; }  // compact format

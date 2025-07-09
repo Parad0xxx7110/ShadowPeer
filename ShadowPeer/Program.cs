@@ -5,27 +5,28 @@ class Program
 {
     static async Task Main()
     {
-        // Set console output encoding to UTF-8 for proper icon display
-        // it is recommended to use Windows Terminal or a compatible terminal with a proper UTF-8 support.
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
 
         InitScreen.ShowPrompt();
         AnsiConsole.Clear();
 
-       var sim = new TrafficSim(5*1024*1024, 100*1024,500*1024);
+        string torrentFilePath = "C:\\figaro.torrent";
+        var torrentHandler = new TorrentHandler(torrentFilePath);
 
-        while(!sim.isDone)
-        {
-            sim.Tick();
+        var torrentMetas = await torrentHandler.LoadTorrentAsync();
 
-            long uploaded = sim.TotalUploadedBytes;
-            long speed = sim.CurrentUploadSpeed;
+        var signature = ClientSignatureFactory.Create(TorrentClient.Random);
 
-            AnsiConsole.Markup($"[green]Uploaded: {uploaded / 1024} KiB, Speed: {speed / 1024} KiB/s[/]");
-            await Task.Delay(1000); // Simulate a 1 second delay for the next tick
-            AnsiConsole.Clear();
-        }
+        var builder = new AnnounceBuilder(torrentMetas);
+
+        var announceEngine = new AnnounceEngine(torrentMetas, signature, builder);
+
+        await announceEngine.FirstAnnounce(builder);
+
+        
+
+
 
     }
 }

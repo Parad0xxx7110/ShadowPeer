@@ -51,11 +51,11 @@ namespace ShadowPeer.Core
             }
             catch (Exception ex)
             {
-                Debug.WriteLine ($"Error parsing torrent file: {ex.Message}");
+                Debug.WriteLine($"Error parsing torrent file: {ex.Message}");
                 return null;
             }
         }
 
-        
+
     }
 }

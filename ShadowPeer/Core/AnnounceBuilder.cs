@@ -227,22 +227,22 @@ public class AnnounceBuilder
 
         var KeysOrder = new[]
         {
-        "info_hash",
-        "peer_id",
-        "port",
-        "uploaded",
-        "downloaded",
-        "left",
-        "event",
-        "key",
-        "compact",
-        "numwant",
-        "supportcrypto",
-        "no_peer_id",
-        "trackerid",
-        "ip",
-        "ipv6"
-    };
+            "info_hash",
+            "peer_id",
+            "port",
+            "uploaded",
+            "downloaded",
+            "left",
+            "event",
+            "key",
+            "compact",
+            "numwant",
+            "supportcrypto",
+            "no_peer_id",
+            "trackerid",
+            "ip",
+            "ipv6"
+        };
 
         var orderedQuery = new NameValueCollection();
 

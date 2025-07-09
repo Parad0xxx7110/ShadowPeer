@@ -3,6 +3,9 @@
 // Code by Cyril "Parad0x" Bouvier
 // Inspired by Lutonet code -> https://github.com/Lutonet/SpectreConsoleFileBrowser
 
+// STABLE & SEALED
+
+
 namespace ShadowPeer.Core
 {
     public class FileBrowser
