@@ -7,23 +7,24 @@ namespace ShadowPeer.Core;
 
 internal class AnnounceEngine : IDisposable
 {
-    private long _sessionBytesToUpload = 0;
-    private long _sessionBytesUploaded = 0;
-    private long _sessionBytesToDownload = 0;
-    private long _sessionBytesDownloaded = 0;
-
     private readonly TorrentMetadatas _torrentMeta;
     private readonly ClientSignature _clientSignature;
     private readonly AnnounceBuilder _announceBuilder;
     private readonly PeerTrafficSim _peerTrafficSim;
     private TrackerResponse? _lastTrackerResponse;
 
-    // Default tracker interval is 30 minutes, can be adjusted based on tracker response
+    public long SessionBytesAnnounced { get; private set; } = 0;
+    public string SessionTorrentName { get; private set; } = string.Empty;
+    public double SessionCurrentUploadSpeed { get; private set; } = 0;
+    public TimeSpan SessionElapsedTime { get; private set; } = TimeSpan.Zero;
+    public TimeSpan NextAnnounce { get; private set; } = TimeSpan.Zero;
+
     private TimeSpan _trackerInterval = TimeSpan.FromMinutes(30);
     private readonly Stopwatch _trackerIntervallTimer = new();
     private AnnounceEngineState _state = AnnounceEngineState.Ready;
     private CancellationTokenSource? _cts = new();
     private bool _isDisposed = false;
+    private long _lastAnnouncedBytes = 0;
 
     private CancellationToken Token => _cts?.Token ?? throw new InvalidOperationException("CancellationTokenSource is null.");
 
@@ -40,6 +41,7 @@ internal class AnnounceEngine : IDisposable
         _clientSignature = signature;
         _announceBuilder = announceBuilder;
         _peerTrafficSim = trafficSim;
+        SessionTorrentName = _torrentMeta.Name;
     }
 
     public async Task StartEngineAsync()
@@ -55,21 +57,52 @@ internal class AnnounceEngine : IDisposable
 
         StartKeysListner();
 
-        while (!Token.IsCancellationRequested)
-        {
-            _peerTrafficSim.Tick();
+        // Setup Live Display Table
+        var table = new Table()
+            .AddColumn("Property")
+            .AddColumn("Value");
 
-            var nextAnnounce = _trackerInterval - _trackerIntervallTimer.Elapsed;
+        table.AddRow("Torrent Name", SessionTorrentName);
+        table.AddRow("Bytes Announced", SessionBytesAnnounced.ToString());
+        table.AddRow("Current Upload Speed", $"{SessionCurrentUploadSpeed / 1024.0 / 1024.0:F2} MB/s");
+        table.AddRow("Elapsed Time", SessionElapsedTime.ToString(@"hh\:mm\:ss"));
+        table.AddRow("Next Announce", NextAnnounce.ToString(@"mm\:ss"));
 
-            if (nextAnnounce <= TimeSpan.Zero && _lastTrackerResponse is not null && _lastTrackerResponse.Interval.HasValue)
+        await AnsiConsole.Live(table)
+            .StartAsync(async ctx =>
             {
-                await SendHeartBeatAnnounce(_announceBuilder, _lastTrackerResponse);
-                _trackerIntervallTimer.Restart();
-            }
+                while (!Token.IsCancellationRequested)
+                {
+                    _peerTrafficSim.Tick();
+                    SessionCurrentUploadSpeed = _peerTrafficSim.CurrentUploadSpeed;
+                    SessionElapsedTime = _trackerIntervallTimer.Elapsed;
 
-            await Task.Delay(1000, Token);
-        }
+                    var nextAnnounce = _trackerInterval - _trackerIntervallTimer.Elapsed;
+                    NextAnnounce = nextAnnounce > TimeSpan.Zero ? nextAnnounce : TimeSpan.Zero;
+
+                    if (nextAnnounce <= TimeSpan.Zero && _lastTrackerResponse is not null && _lastTrackerResponse.Interval.HasValue)
+                    {
+                        await SendHeartBeatAnnounce(_announceBuilder, _lastTrackerResponse);
+                        SessionBytesAnnounced += _peerTrafficSim.TotalUploadedBytes;
+                        _trackerIntervallTimer.Restart();
+                        SessionElapsedTime = TimeSpan.Zero;
+                    }
+
+                    // Mise à jour des valeurs dans la table
+                    table.UpdateCell(0, 1, SessionTorrentName);
+                    table.UpdateCell(1, 1, SessionBytesAnnounced.ToString());
+                    table.UpdateCell(2, 1, $"{SessionCurrentUploadSpeed / 1024.0 / 1024.0:F2} MB/s");
+                    table.UpdateCell(3, 1, SessionElapsedTime.ToString(@"hh\:mm\:ss"));
+                    table.UpdateCell(4, 1, NextAnnounce.ToString(@"mm\:ss"));
+
+
+                    ctx.Refresh();
+
+                    await Task.Delay(1000, Token);
+                }
+            });
     }
+
 
     public async Task FirstAnnounce(AnnounceBuilder builder)
     {
@@ -101,6 +134,8 @@ internal class AnnounceEngine : IDisposable
                 throw new InvalidOperationException("Tracker response interval is null.");
 
             _lastTrackerResponse = trackerResponse;
+            _lastAnnouncedBytes = 0;
+
             PrettyPrint.PrintTrackerResponse(trackerResponse);
         }
         catch (Exception ex)
@@ -115,24 +150,28 @@ internal class AnnounceEngine : IDisposable
     {
         try
         {
+            long totalUploaded = _peerTrafficSim.TotalUploadedBytes;
+            long uploadedDelta = totalUploaded - _lastAnnouncedBytes;
+
             builder
-                .WithEvent("") // Empty event for heartbeat
+                .WithEvent("")
                 .WithKey(_clientSignature.Key)
                 .WithPeerId(_clientSignature.PeerId)
                 .WithInfoHash(_torrentMeta.InfoHashBytes)
-                .WithStats(_peerTrafficSim.TotalUploadedBytes, 0, 0); //  left bytes -> seeding + simulated upload
+                .WithStats(totalUploaded, 0, 0);
 
             string announceUrl = builder.Build();
 
             if (string.IsNullOrWhiteSpace(announceUrl))
                 throw new InvalidOperationException("Failed to build heartbeat announce URL.");
 
-            var trackerResponse = await Network.SendAnnounceOverTCPAsync(_torrentMeta.Host, _torrentMeta.Port, announceUrl);
+            var trackerResponse = await Network.SendAnnounceOverTCPAsync(_torrentMeta.Host, _torrentMeta.Port, announceUrl)
+                ?? throw new InvalidOperationException("Tracker response is null.");
 
-            if (trackerResponse != null)
-                _lastTrackerResponse = trackerResponse;
-            else
-                throw new InvalidOperationException("Tracker response is null.");
+            _lastTrackerResponse = trackerResponse;
+
+            SessionBytesAnnounced += uploadedDelta;
+            _lastAnnouncedBytes = totalUploaded;
 
             AnsiConsole.Clear();
             PrettyPrint.PrintTrackerResponse(trackerResponse);
@@ -165,8 +204,6 @@ internal class AnnounceEngine : IDisposable
         }
         finally
         {
-            // Dispose();
-            // _state = AnnounceEngineState.Ready;
             Reset();
         }
     }
@@ -187,23 +224,17 @@ internal class AnnounceEngine : IDisposable
 
         _cts?.Cancel();
         _cts?.Dispose();
-
         _cts = new CancellationTokenSource();
 
-        _sessionBytesToUpload = 0;
-        _sessionBytesUploaded = 0;
-        _sessionBytesToDownload = 0;
-        _sessionBytesDownloaded = 0;
+        SessionBytesAnnounced = 0;
+        SessionTorrentName = string.Empty;
+        _lastAnnouncedBytes = 0;
 
         _trackerIntervallTimer.Reset();
-
         _state = AnnounceEngineState.Ready;
-
         _lastTrackerResponse = null;
     }
 
-
-    // Gracefull shutdown func
     public async Task StopAsync()
     {
         if (_isDisposed)
@@ -212,31 +243,19 @@ internal class AnnounceEngine : IDisposable
         if (_state != AnnounceEngineState.Running && _state != AnnounceEngineState.Starting)
             return;
 
-
         _cts?.Cancel();
-
-
         await SendStopAnnounceAsync();
-
-
         _state = AnnounceEngineState.Stopped;
-
-
         Dispose();
     }
 
-
-
-    // Listen for keys in a separate thread, low cpu usage, non-blocking, easy peezy.
     private void StartKeysListner()
     {
         Task.Run(async () =>
         {
             while (_state == AnnounceEngineState.Running)
             {
-                var forceKey = Console.ReadKey(true); // consume key without display
-
-                // F5 to force heartbeat announce, escape to stop the announce engine
+                var forceKey = Console.ReadKey(true);
                 if (forceKey.Key == ConsoleKey.F5)
                 {
                     AnsiConsole.MarkupLine("[yellow]Forcing heartbeat announce...[/]");
@@ -249,11 +268,8 @@ internal class AnnounceEngine : IDisposable
                     break;
                 }
             }
-
-
         });
     }
-
 
     public void Dispose()
     {

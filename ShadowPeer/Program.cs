@@ -11,7 +11,7 @@ class Program
         InitScreen.ShowPrompt();
         AnsiConsole.Clear();
 
-        string torrentFilePath = "C:\\figaro.torrent";
+        string torrentFilePath = "C:\\coinop.torrent";
         var torrentHandler = new TorrentHandler(torrentFilePath);
 
         var torrentMetas = await torrentHandler.LoadTorrentAsync();
@@ -20,9 +20,18 @@ class Program
 
         var builder = new AnnounceBuilder(torrentMetas);
 
-        var announceEngine = new AnnounceEngine(torrentMetas, signature, builder);
 
-        await announceEngine.FirstAnnounce(builder);
+
+
+        long minSpeed = 5 * 1024 * 1024; // 5 MB/s
+        long maxSpeed = 15 * 1024 * 1024; // 15 MB/s
+       // long targetUpload = 10L * 1024 * 1024 * 1024; // 10 GB
+
+        var peerSim = new PeerTrafficSim(-1,minSpeed,maxSpeed);
+
+        var announceEngine = new AnnounceEngine(torrentMetas, signature, builder,peerSim);
+
+        await announceEngine.StartEngineAsync();
 
         
 

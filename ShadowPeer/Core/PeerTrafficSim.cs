@@ -1,22 +1,14 @@
 ﻿namespace ShadowPeer.Core
 {
-
     /// <summary>
     /// Emulates peer-to-peer network traffic patterns, dynamically computing upload throughput 
     /// over time with randomized bandwidth fluctuations within defined limits.
+    /// Supports unlimited upload when targetBytesToUpload is set to -1.
     /// </summary>
-
-
-    // TODO : Simulate download traffic
-
-
     internal class PeerTrafficSim
     {
         private readonly Random _rnd = new();
         private DateTime _lastTick = DateTime.UtcNow;
-
-
-        private long _TorrentSizeBytes;
 
         private readonly long _targetBytes;
         private long _uploadedBytes;
@@ -29,16 +21,19 @@
         // Get total uploaded bytes
         public long TotalUploadedBytes => _uploadedBytes;
 
-        // Called when the upload simulation reach the target bytes
+        // Called when the upload simulation reach the target bytes (only if limited)
         public event EventHandler? UploadCompleted;
 
+        /// <summary>
+        /// targetBytesToUpload = -1 means unlimited upload
+        /// </summary>
         public PeerTrafficSim(long targetBytesToUpload, long minSpeed, long maxSpeed)
         {
             if (minSpeed <= 0 || maxSpeed <= 0 || minSpeed > maxSpeed)
                 throw new ArgumentException("Speed values must be positive and minSpeed <= maxSpeed.");
 
-            if (targetBytesToUpload <= 0)
-                throw new ArgumentException("Target upload bytes must be greater than zero.");
+            if (targetBytesToUpload == 0 || targetBytesToUpload < -1)
+                throw new ArgumentException("Target upload bytes must be greater than zero or -1 for unlimited.");
 
             _targetBytes = targetBytesToUpload;
             _minSpeed = minSpeed;
@@ -59,22 +54,31 @@
 
             var speed = _rnd.NextInt64(_minSpeed, _maxSpeed + 1);
             var bytesToUpload = (long)(speed * seconds);
-            var bytesRemaining = _targetBytes - _uploadedBytes;
 
-            if (bytesToUpload >= bytesRemaining)
+            if (_targetBytes == -1)
             {
-                _uploadedBytes = _targetBytes;
-                CurrentUploadSpeed = speed;
-                _hasCompleted = true;
-                UploadCompleted?.Invoke(this, EventArgs.Empty);
-            }
-            else
-            {
+                // Unlimited upload mode, just accumulate
                 _uploadedBytes += bytesToUpload;
                 CurrentUploadSpeed = speed;
             }
-        }
+            else
+            {
+                var bytesRemaining = _targetBytes - _uploadedBytes;
 
+                if (bytesToUpload >= bytesRemaining)
+                {
+                    _uploadedBytes = _targetBytes;
+                    CurrentUploadSpeed = speed;
+                    _hasCompleted = true;
+                    UploadCompleted?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    _uploadedBytes += bytesToUpload;
+                    CurrentUploadSpeed = speed;
+                }
+            }
+        }
 
         public void Reset()
         {
@@ -84,5 +88,4 @@
             _hasCompleted = false;
         }
     }
-
 }
