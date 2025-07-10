@@ -71,14 +71,13 @@ namespace ShadowPeer.Core
                         await ms.WriteAsync(buffer, 0, bytesRead);
                 } while (bytesRead > 0);
 
-                AnsiConsole.MarkupLine("[green]Response received.[/]");
+              
 
                 var responseBytes = ms.ToArray();
 
                 if (DataParser.TryParseTrackerResponse(responseBytes, out var trackerResponse))
                     return trackerResponse;
 
-                Console.WriteLine("Failed to parse tracker response.");
                 return null;
             }
             catch (Exception ex)

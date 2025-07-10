@@ -62,7 +62,7 @@ internal class AnnounceEngine : IDisposable
             .AddColumn("Property")
             .AddColumn("Value");
 
-        table.AddRow("Torrent Name", SessionTorrentName);
+        table.AddRow("Torrent Name", Markup.Escape(SessionTorrentName));
         table.AddRow("Bytes Announced", SessionBytesAnnounced.ToString());
         table.AddRow("Current Upload Speed", $"{SessionCurrentUploadSpeed / 1024.0 / 1024.0:F2} MB/s");
         table.AddRow("Elapsed Time", SessionElapsedTime.ToString(@"hh\:mm\:ss"));
@@ -88,9 +88,11 @@ internal class AnnounceEngine : IDisposable
                         SessionElapsedTime = TimeSpan.Zero;
                     }
 
-                    // Mise à jour des valeurs dans la table
-                    table.UpdateCell(0, 1, SessionTorrentName);
-                    table.UpdateCell(1, 1, SessionBytesAnnounced.ToString());
+                    double mb = SessionBytesAnnounced / 1024.0 / 1024.0; // make a func for convert bytes ffs...
+
+                    
+                    table.UpdateCell(0, 1, Markup.Escape(SessionTorrentName));
+                    table.UpdateCell(1, 1, $"{mb:F2} MB");
                     table.UpdateCell(2, 1, $"{SessionCurrentUploadSpeed / 1024.0 / 1024.0:F2} MB/s");
                     table.UpdateCell(3, 1, SessionElapsedTime.ToString(@"hh\:mm\:ss"));
                     table.UpdateCell(4, 1, NextAnnounce.ToString(@"mm\:ss"));

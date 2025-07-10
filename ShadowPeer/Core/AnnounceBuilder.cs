@@ -13,7 +13,7 @@ using System.Web;
 public class AnnounceBuilder
 {
     private const int DefaultPort = 25341; // Default port for the client, totally arbitrary and random here.
-    private const int DefaultNumWant = 30;
+    private const int DefaultNumWant = 10;
 
     private byte[]? _infoHash;
     private int? _port = DefaultPort;
